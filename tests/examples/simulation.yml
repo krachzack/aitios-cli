@@ -1,0 +1,19 @@
+name: Park Scene
+description: "A single buddha in the center gets bombarded with rain from the sky, making it rust, everything not made of bronze is concrete."
+scene: "tests/assets/buddha.obj"
+iterations: 30
+sources:
+  - "tests/examples/rain.yml"
+# Maps MTL material names against surfel descriptions
+surfels_by_material:
+  bronze: "tests/examples/iron.yml"
+  # catchall
+  _: "tests/examples/concrete.yml"
+effects:
+  - density:
+      width: 4096
+      height: 4096
+      island_bleed: 3
+      tex_pattern: "tests/output/{iteration}-{id}-{entity}-{substance}.png"
+      obj_pattern: "tests/output/{iteration}-{substance}.obj"
+      mtl_pattern: "tests/output/{iteration}-{substance}.mtl"

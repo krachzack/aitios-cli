@@ -1,0 +1,17 @@
+name: Concrete
+description: Surfel properties for concrete
+reflectance:
+  delta_straight: 1.0
+  delta_parabolic: 1.0
+  delta_flow: 1.0
+initial:
+  humidity: 0.0
+  rust: 0.0
+deposit:
+  # Rate of absorption from tons to this type of surfel
+  humidity: 1.0
+  rust: 0.5
+rules:
+  # Evaportation reduces humidity
+  - from: humidity
+    factor: -0.5

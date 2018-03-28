@@ -1,0 +1,21 @@
+name: Iron
+description: Surfel properties for metal-like substances with flow-like weathering artifacts
+reflectance:
+  delta_straight: 0.0
+  delta_parabolic: 0.8
+  delta_flow: 0.2
+initial:
+  humidity: 0.0
+  rust: 0.0
+deposit:
+  # Rate of absorption from tons to this type of surfel
+  humidity: 1.0
+  rust: 0.5
+rules:
+  # Corrosion
+  - from: humidity
+    to: rust
+    factor: 0.5
+  # Evaportation reduces humidity, leaving out target
+  - from: humidity
+    factor: -0.5
