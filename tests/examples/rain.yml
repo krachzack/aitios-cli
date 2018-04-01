@@ -14,4 +14,4 @@ absorb:
 interaction_radius: 0.1
 parabola_height: 0.07
 flow_distance: 0.17
-
+flow_direction: [0.0, -1.0, 0.0]

@@ -1,5 +1,5 @@
 use runner::SimulationRunner;
-use geom::Vertex;
+use geom::{Vec3, Vertex};
 use asset::obj;
 use scene::{Entity, Mesh};
 use sim::{Simulation, SurfelData, SurfelRule, TonSourceBuilder, TonSource};
@@ -99,8 +99,13 @@ fn build_sources(sources: &Vec<TonSourceSpec>, unique_substance_names: &Vec<Stri
             let mesh = &obj::load(&spec.mesh)
                 .expect(&format!("Ton source mesh could not be loaded at \"{:?}\"", spec.mesh))[0].mesh;
 
-            TonSourceBuilder::new()
-                .mesh_shaped(mesh, spec.diffuse)
+            let mut builder = TonSourceBuilder::new();
+
+            if let Some(ref direction_arr) = spec.flow_direction {
+                builder = builder.flow_direction_static(Vec3::new(direction_arr[0], direction_arr[1], direction_arr[2]));
+            }
+
+            builder.mesh_shaped(mesh, spec.diffuse)
                 .emission_count(spec.emission_count)
                 .p_straight(spec.p_straight)
                 .p_parabolic(spec.p_parabolic)

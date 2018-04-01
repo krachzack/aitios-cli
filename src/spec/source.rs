@@ -18,7 +18,10 @@ pub struct TonSourceSpec {
     pub absorb: HashMap<String, f32>,
     pub interaction_radius: f32,
     pub parabola_height: f32,
-    pub flow_distance: f32
+    pub flow_distance: f32,
+    /// If set, provides direction of flow that is projected onto triangles to obtain
+    /// final flow direction. If left out, incoming direction will be projected.
+    pub flow_direction: Option<[f32; 3]>
 }
 
 fn is_diffuse_default() -> bool { false }
@@ -52,5 +55,6 @@ mod test {
         assert_eq!(spec.interaction_radius, 0.1);
         assert_eq!(spec.parabola_height, 0.07);
         assert_eq!(spec.flow_distance, 0.17);
+        assert_eq!(spec.flow_direction, Some([0.0, -1.0, 0.0]));
     }
 }
