@@ -1,4 +1,4 @@
-use spec::{SimulationSpec, EffectSpec};
+use spec::{SimulationSpec, EffectSpec, SurfelLookup};
 use sim::Simulation;
 use scene::{Entity, MaterialBuilder};
 use tex::{self, Density, Rgba, build_surfel_lookup_table};
@@ -30,13 +30,20 @@ impl SimulationRunner {
                     width,
                     height,
                     island_bleed,
+                    surfel_lookup,
                     ..
                 } => {
                     info!("Preparing {}x{} surfel lookup tables for accelerated texture synthesis on static scenes.", width, height);
                     surfel_tables.entry((width, height))
                         .or_insert_with(|| entities.iter().enumerate().map(|(idx, e)| {
                             info!("{} surfel table is being assembled… ({}/{})", e.name, (idx+1), entities.len());
-                            build_surfel_lookup_table(e, sim.surface(), 4, width, height, island_bleed)
+                            match surfel_lookup {
+                                SurfelLookup::Nearest { count } =>
+                                    build_surfel_lookup_table(e, sim.surface(), count, width, height, island_bleed),
+                                SurfelLookup::Within { within: _within } =>
+                                    unimplemented!()
+                            }
+
                         }).collect());
                 }
             }
@@ -66,7 +73,8 @@ impl SimulationRunner {
                 island_bleed,
                 ref tex_pattern,
                 ref obj_pattern,
-                ref mtl_pattern
+                ref mtl_pattern,
+                ..
             } => self.perform_density_effect(width, height, island_bleed, tex_pattern, obj_pattern, mtl_pattern)
         }
     }
