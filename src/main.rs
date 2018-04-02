@@ -5,6 +5,7 @@ extern crate aitios_surf as surf;
 extern crate aitios_scene as scene;
 extern crate aitios_tex as tex;
 extern crate clap;
+extern crate chrono;
 #[macro_use]
 extern crate serde_derive;
 extern crate serde;
@@ -18,9 +19,12 @@ mod spec;
 mod runner;
 
 use clap::{ArgMatches, Arg, App};
+use chrono::prelude::*;
 use spec::SimulationSpec;
 use std::fs::File;
 use std::path::Path;
+use std::io;
+use std::collections::HashSet;
 use simplelog::{SharedLogger, CombinedLogger, TermLogger, WriteLogger, LevelFilter, Config};
 
 fn main() {
@@ -46,11 +50,22 @@ fn main() {
             Arg::with_name("log")
                 .short("l")
                 .long("log")
-                .help("Specifies a file in which to log output")
+                .multiple(true)
+                .takes_value(true)
+                .min_values(0)
+                .max_values(64)
+                .value_name("LOG_FILE")
+                .help("Specifies a file in which to log simulation progress")
         )
         .get_matches();
 
-    configure_logging(&matches);
+    match configure_logging(&matches) {
+        Err(err) => {
+            println!("Failed to set up logging: {}", err);
+            return;
+        }
+        _ => ()
+    };
 
     let spec_file_path = matches.value_of("SIMULATION_SPEC_FILE")
         .expect("No simulation spec file provided");
@@ -91,26 +106,57 @@ fn validate_simulation_spec(simulation_spec_file: String) -> Result<(), String> 
     }
 }
 
-fn configure_logging(arg_matches: &ArgMatches) {
-    let level_filter = if arg_matches.is_present("verbose") {
-        LevelFilter::Debug
-    } else {
-        LevelFilter::Warn
+fn configure_logging(arg_matches: &ArgMatches) -> Result<(), io::Error> {
+    // Nothing => warn, -v => Info, -vv => Debug
+    let term_level_filter = match arg_matches.occurrences_of("verbose") {
+        0 => LevelFilter::Warn,
+        1 => LevelFilter::Info,
+        _ => LevelFilter::Debug
     };
 
     let mut loggers : Vec<Box<SharedLogger>> = vec![
-        TermLogger::new(level_filter, Config::default()).unwrap()
+        TermLogger::new(term_level_filter, Config::default()).unwrap()
     ];
 
-    if let Some(log_file_path) = arg_matches.value_of("log") {
-        let log_file = File::create(log_file_path)
-            .expect("Failed to create logging file");
+    let log_files = arg_matches.values_of("log");
+    let fallback_log_filename = &synthesize_datetime_log_filename();
 
-        loggers.push(
-            WriteLogger::new(level_filter, Config::default(), log_file)
-        );
+    if let Some(log_files) = log_files {
+        // Fall back to synthesized filename with date if option was not provided with a value,
+        // e.g. aitios-cli sim.yml -l instead of
+        //      aitios-cli sim.yml -l LOGFILE.log
+        // and make extra sure the log file names are unique before creating them
+        let mut log_files : HashSet<_> = log_files.collect();
+        if log_files.is_empty() {
+            log_files.insert(fallback_log_filename);
+        }
+
+        // Then try to create all files and push a logger
+        for file in log_files.into_iter() {
+            let file = File::create(file)?;
+            loggers.push(
+                WriteLogger::new(LevelFilter::Debug, Config::default(), file)
+            );
+        }
     }
 
     CombinedLogger::init(loggers)
         .expect("Failed to set up combined logger");
+
+    Ok(())
+}
+
+/// Synthesize a default filename if -l or --log is passed without an actual filename.
+fn synthesize_datetime_log_filename() -> String {
+    // Get RFC3339 formatted datetime with timezone and make it filename safe
+    // by replacing colons with underscores, e.g.
+    // "2018-01-26T18:30:09.453+00:00" => ""2018-01-26T18_30_09.453+00_00"
+    let datetime = Local::now()
+        .to_rfc3339()
+        .replace(":", "_");
+
+    format!(
+        "aitios-log-{date}.log",
+        date = datetime
+    )
 }
