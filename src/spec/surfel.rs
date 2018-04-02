@@ -8,6 +8,7 @@ pub struct SurfelSpec {
     pub initial: HashMap<String, f32>,
     pub deposit: HashMap<String, f32>,
     // TODO only global surfel rules allowed as of yet
+    #[serde(default = "Vec::new")]
     pub rules: Vec<SurfelRuleSpec>
 }
 

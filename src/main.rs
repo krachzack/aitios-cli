@@ -61,7 +61,7 @@ fn main() {
 
     match configure_logging(&matches) {
         Err(err) => {
-            println!("Failed to set up logging: {}", err);
+            eprintln!("[ABORT] Failed to set up logging: {}", err);
             return;
         }
         _ => ()

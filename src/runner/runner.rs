@@ -124,10 +124,10 @@ impl SimulationRunner {
 
             match (obj_pattern, mtl_pattern) {
                 (&Some(ref obj_pattern), &Some(ref mtl_pattern)) => {
-                    let obj_filename = obj_pattern.replace("{iteration}", &format!("{}", self.iteration))
+                    let obj_filename = obj_pattern.replace("{iteration}", &format!("{}", (1 + self.iteration)))
                         .replace("{substance}", &self.unique_substance_names[substance_idx]);
 
-                    let mtl_filename = mtl_pattern.replace("{iteration}", &format!("{}", self.iteration))
+                    let mtl_filename = mtl_pattern.replace("{iteration}", &format!("{}", (1 + self.iteration)))
                         .replace("{substance}", &self.unique_substance_names[substance_idx]);
 
                     info!("Persisting scene: {}", obj_filename);
