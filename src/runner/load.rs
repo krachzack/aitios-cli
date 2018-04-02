@@ -47,7 +47,12 @@ pub fn load<P : Into<PathBuf>>(simulation_spec_file: P) -> Result<SimulationRunn
     let surface = build_surface(&entities, &surfel_specs_by_material_name, &unique_substance_names, spec.surfel_distance);
 
     let simulation = {
+        let has_fallback_surfel_spec = surfel_specs_by_material_name.contains_key("_");
+
+        // Ignoring geometry where the corresponding material has no surfel specification
+        // and hence has no surfels generated, unless a fallback surfel spec is provided
         let all_triangles = entities.iter()
+            .filter(|e| has_fallback_surfel_spec || surfel_specs_by_material_name.contains_key(e.material.name()))
             .flat_map(|e| e.mesh.triangles());
 
         // No global surfel rules, only per substance type mapped from material
