@@ -14,6 +14,6 @@ effects:
       width: 4096
       height: 4096
       island_bleed: 3
-      tex_pattern: "tests/output/{iteration}-{id}-{entity}-{substance}.png"
-      obj_pattern: "tests/output/{iteration}-{substance}.obj"
-      mtl_pattern: "tests/output/{iteration}-{substance}.mtl"
+      tex_pattern: "tests/output-{datetime}/{iteration}-{id}-{entity}-{substance}.png"
+      obj_pattern: "tests/output-{datetime}/{iteration}-{substance}.obj"
+      mtl_pattern: "tests/output-{datetime}/{iteration}-{substance}.mtl"

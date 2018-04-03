@@ -4,8 +4,8 @@ version = "0.1.0"
 authors = ["krachzack <hello@phstadler.com>"]
 
 [dependencies]
-clap = "2.31.1"
-chrono = "0.4.1"
+clap = "2.31"
+chrono = "0.4"
 log = "0.4"
 simplelog = "0.5"
 serde = "1.0"

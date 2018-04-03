@@ -48,3 +48,6 @@ Cargo.lock
 /tests/output/6-0-buddha-humidity.png
 /tests/output/6-humidity.mtl
 /tests/output/6-humidity.obj
+tests/output-*
+/debug_tracing.obj
+/debug_tracing.mtl

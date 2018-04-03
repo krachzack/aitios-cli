@@ -2,11 +2,14 @@ use spec::{SimulationSpec, EffectSpec, SurfelLookup};
 use sim::Simulation;
 use scene::{Entity, MaterialBuilder};
 use tex::{self, Density, Rgba, build_surfel_lookup_table};
-use std::fs::File;
+use std::io;
+use std::fs::{File, create_dir_all};
+use std::path::PathBuf;
 use std::fmt;
 use std::rc::Rc;
 use std::collections::HashMap;
 use asset::obj;
+use chrono::prelude::*;
 
 pub struct SimulationRunner {
     spec: SimulationSpec,
@@ -14,8 +17,10 @@ pub struct SimulationRunner {
     unique_substance_names: Vec<String>,
     sim: Simulation,
     entities: Vec<Entity>,
-    /// Maps resolutions against precomputed surfel indexes per texel, per entity
-    surfel_tables: HashMap<(usize, usize), Vec<Vec<Vec<(f32, usize)>>>>
+    /// Maps resolutions against precomputed surfel indexes per texel, per entity.
+    surfel_tables: HashMap<(usize, usize), Vec<Vec<Vec<(f32, usize)>>>>,
+    /// The local time at which the runner was created.
+    creation_time: DateTime<Local>
 }
 
 impl SimulationRunner {
@@ -50,7 +55,8 @@ impl SimulationRunner {
         }
 
         SimulationRunner {
-            iteration: 0, spec, unique_substance_names, sim, entities, surfel_tables
+            iteration: 0, spec, unique_substance_names, sim, entities, surfel_tables,
+            creation_time: Local::now()
         }
     }
 
@@ -94,16 +100,19 @@ impl SimulationRunner {
             );
 
             let mut entities_with_density_maps = Vec::new();
+            let datetime = &self.creation_time.to_rfc3339()
+                .replace(":", "_");
 
             for (idx, ent) in self.entities.iter().enumerate() {
                 // {iteration}-{id}-{entity}-{substance}.png
-                let tex_filename = tex_pattern.replace("{iteration}", &format!("{}", self.iteration))
+                let tex_filename = tex_pattern.replace("{iteration}", &format!("{}", (1 + self.iteration)))
                     .replace("{id}", &format!("{}", idx))
                     .replace("{entity}", &ent.name)
-                    .replace("{substance}", &self.unique_substance_names[substance_idx]);
+                    .replace("{substance}", &self.unique_substance_names[substance_idx])
+                    .replace("{datetime}", datetime);
 
-                let ref mut fout = File::create(&tex_filename)
-                    .expect(&format!("Could not create output file for density effect: \"{}\"", &tex_filename));
+                let ref mut fout = create_file_recursively(&tex_filename)
+                    .expect("Could not create image file for density effect.");
 
                 info!("Collecting density: {}", &tex_filename);
                 let surfel_table_resolution = (width, height);
@@ -133,17 +142,73 @@ impl SimulationRunner {
             match (obj_pattern, mtl_pattern) {
                 (&Some(ref obj_pattern), &Some(ref mtl_pattern)) => {
                     let obj_filename = obj_pattern.replace("{iteration}", &format!("{}", (1 + self.iteration)))
-                        .replace("{substance}", &self.unique_substance_names[substance_idx]);
+                        .replace("{substance}", &self.unique_substance_names[substance_idx])
+                        .replace("{datetime}", datetime);
 
                     let mtl_filename = mtl_pattern.replace("{iteration}", &format!("{}", (1 + self.iteration)))
-                        .replace("{substance}", &self.unique_substance_names[substance_idx]);
+                        .replace("{substance}", &self.unique_substance_names[substance_idx])
+                        .replace("{datetime}", datetime);
 
                     info!("Persisting scene: {}", obj_filename);
+
+                    create_file_recursively(&obj_filename)
+                        .expect("Failed to create OBJ file when persisting effect results");
+                    create_file_recursively(&mtl_filename)
+                        .expect("Failed to create MTL file when persisting effect results");
+
                     obj::save(entities_with_density_maps.iter(), Some(obj_filename), Some(mtl_filename))
                         .expect("Failed to save OBJ/MTL");
                 }
                 _ => unimplemented!("Only combined OBJ/MTL output supported by now")
             }
+        }
+    }
+}
+
+/// Attempts to create or overwrite the file at the given path.
+///
+/// If it exists and is a file, it will be overwritten.
+///
+/// If it exists and is a directory or some other non-file entity,
+/// an error of kind `io::ErrorKind::InvalidData` is returned.
+///
+/// If the directory does not exist, the function attempts to create
+/// intermediate directories necessary to create it and finally
+/// creates and returns the file.
+fn create_file_recursively<P>(path: P) -> Result<File, io::Error>
+    where P : Into<PathBuf>
+{
+    match &path.into() {
+        // Path, following symlinks, already exists and is a file, overwrite it
+        path if path.is_file() => File::create(&path),
+        // Path, following symlinks, already exists and is a directory, fail with specific error message
+        path if path.is_dir() => Err(
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!(
+                    "Tried to create a file at {}, but a directory already exists at the same path.",
+                    path.to_str().unwrap_or("NON-UTF-8")
+                )
+            )
+        ),
+        // Some entity exists at path, following symlinks, but it is neither a directory,
+        // nor a file. Do not attempt to overwrite and instead fail with generic error message.
+        path if path.exists() => Err(
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!(
+                    "Tried to create a file at {}, but some entity that is neither a file nor a directory already exists at the same path.",
+                    path.to_str().unwrap_or("NON-UTF-8")
+                )
+            )
+        ),
+        // Nothing exists at path yet, try to create intermediate directories and the file itself.
+        path => {
+            if let Some(parent) = path.parent() {
+                create_dir_all(parent)?
+            }
+
+            File::create(&path)
         }
     }
 }
