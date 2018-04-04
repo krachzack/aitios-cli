@@ -14,6 +14,10 @@ pub enum EffectSpec {
         tex_pattern: String,
         obj_pattern: Option<String>,
         mtl_pattern: Option<String>
+    },
+    #[serde(rename="dump_surfels")]
+    DumpSurfels {
+        obj_pattern: String
     }
 }
 

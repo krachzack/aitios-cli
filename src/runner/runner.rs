@@ -50,7 +50,8 @@ impl SimulationRunner {
                             }
 
                         }).collect());
-                }
+                },
+                _ => ()
             }
         }
 
@@ -61,8 +62,16 @@ impl SimulationRunner {
     }
 
     pub fn run(&mut self) {
+        // Iteration 0 only performs effects, no effects should no yet.
+        // Useful as a reference for iteration 1
+        self.iteration = 0;
+        for effect in &self.spec.effects {
+            self.perform_effect(effect)
+        }
+
+        // The first iteration with actual gammaton simulation is iteration 1
         for iteration in 0..self.spec.iterations {
-            self.iteration = iteration;
+            self.iteration = iteration + 1;
             info!("Iteration started… ({}/{})", (iteration + 1), self.spec.iterations);
             self.sim.run();
             for effect in &self.spec.effects {
@@ -81,7 +90,8 @@ impl SimulationRunner {
                 ref obj_pattern,
                 ref mtl_pattern,
                 ..
-            } => self.perform_density_effect(width, height, island_bleed, tex_pattern, obj_pattern, mtl_pattern)
+            } => self.perform_density_effect(width, height, island_bleed, tex_pattern, obj_pattern, mtl_pattern),
+            &EffectSpec::DumpSurfels { ref obj_pattern } => self.dump_surfels(obj_pattern)
         }
     }
 
@@ -105,7 +115,7 @@ impl SimulationRunner {
 
             for (idx, ent) in self.entities.iter().enumerate() {
                 // {iteration}-{id}-{entity}-{substance}.png
-                let tex_filename = tex_pattern.replace("{iteration}", &format!("{}", (1 + self.iteration)))
+                let tex_filename = tex_pattern.replace("{iteration}", &format!("{}", self.iteration))
                     .replace("{id}", &format!("{}", idx))
                     .replace("{entity}", &ent.name)
                     .replace("{substance}", &self.unique_substance_names[substance_idx])
@@ -141,11 +151,11 @@ impl SimulationRunner {
 
             match (obj_pattern, mtl_pattern) {
                 (&Some(ref obj_pattern), &Some(ref mtl_pattern)) => {
-                    let obj_filename = obj_pattern.replace("{iteration}", &format!("{}", (1 + self.iteration)))
+                    let obj_filename = obj_pattern.replace("{iteration}", &format!("{}", self.iteration))
                         .replace("{substance}", &self.unique_substance_names[substance_idx])
                         .replace("{datetime}", datetime);
 
-                    let mtl_filename = mtl_pattern.replace("{iteration}", &format!("{}", (1 + self.iteration)))
+                    let mtl_filename = mtl_pattern.replace("{iteration}", &format!("{}", self.iteration))
                         .replace("{substance}", &self.unique_substance_names[substance_idx])
                         .replace("{datetime}", datetime);
 
@@ -162,6 +172,21 @@ impl SimulationRunner {
                 _ => unimplemented!("Only combined OBJ/MTL output supported by now")
             }
         }
+    }
+
+    fn dump_surfels(&self, surfel_obj_pattern: &str) {
+        let datetime = &self.creation_time.to_rfc3339()
+                .replace(":", "_");
+
+        let surfel_obj_path = surfel_obj_pattern.replace("{iteration}", &format!("{}", self.iteration))
+            .replace("{datetime}", datetime);
+
+        let mut obj_file = create_file_recursively(surfel_obj_path)
+            .expect("Failed to create OBJ file to save surfels into.");
+
+        self.sim.surface()
+            .dump(&mut obj_file)
+            .expect("Failed to save surfels to OBJ file");
     }
 }
 
