@@ -40,16 +40,19 @@ impl SimulationRunner {
                 } => {
                     info!("Preparing {}x{} surfel lookup tables for accelerated texture synthesis on static scenes.", width, height);
                     surfel_tables.entry((width, height))
-                        .or_insert_with(|| entities.iter().enumerate().map(|(idx, e)| {
-                            info!("{} surfel table is being assembled… ({}/{})", e.name, (idx+1), entities.len());
-                            match surfel_lookup {
-                                SurfelLookup::Nearest { count } =>
-                                    build_surfel_lookup_table(e, sim.surface(), count, width, height, island_bleed),
-                                SurfelLookup::Within { within: _within } =>
-                                    unimplemented!()
-                            }
+                        .or_insert_with(|| entities.iter()
+                            .enumerate()
+                            .map(|(idx, e)| {
+                                info!("{} surfel table is being assembled… ({}/{})", e.name, (idx+1), entities.len());
+                                match surfel_lookup {
+                                    SurfelLookup::Nearest { count } =>
+                                        build_surfel_lookup_table(e, sim.surface(), count, width, height, island_bleed),
+                                    SurfelLookup::Within { within: _within } =>
+                                        unimplemented!()
+                                }
 
-                        }).collect());
+                            })
+                            .collect());
                 },
                 _ => ()
             }

@@ -25,10 +25,22 @@ pub fn load<P : Into<PathBuf>>(simulation_spec_file: P) -> Result<SimulationRunn
         let scene_path = &spec.scene;
         let entities = obj::load(scene_path);
 
-        match entities {
+        let mut entities = match entities {
             Err(_) => return Err(format!("Failed loading scene at: {}", scene_path.file_name().unwrap().to_str().unwrap())),
             Ok(entities) => entities
+        };
+
+        // Throw out all entitites which have no mapped surfel spec,
+        // unless there is a fallback material named "_".
+        // This ignoring affects intersection test and surfel generation,
+        // potentially providing a massive speedup if many objects ignored.
+        if !surfel_specs_by_material_name.contains_key("_") {
+            entities.retain(|e|
+                surfel_specs_by_material_name.keys()
+                    .any(|n| n == e.material.name()));
         }
+
+        entities
     };
 
     let source_specs = load_source_specs(&spec.sources);
