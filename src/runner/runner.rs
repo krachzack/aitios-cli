@@ -171,8 +171,9 @@ impl SimulationRunner {
 
                     obj::save(entities_with_density_maps.iter(), Some(obj_filename), Some(mtl_filename))
                         .expect("Failed to save OBJ/MTL");
-                }
-                _ => unimplemented!("Only combined OBJ/MTL output supported by now")
+                },
+                (&None, &None) => (),
+                _ => unimplemented!("Individual OBJ/MTL output without its counterpart unsupported by now")
             }
         }
     }
