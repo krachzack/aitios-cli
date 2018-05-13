@@ -65,7 +65,7 @@ impl SimulationRunner {
     }
 
     pub fn run(&mut self) {
-        // Iteration 0 only performs effects, no effects should no yet.
+        // Iteration 0 only performs effects, no tracing is performed.
         // Useful as a reference for iteration 1
         self.iteration = 0;
         for effect in &self.spec.effects {

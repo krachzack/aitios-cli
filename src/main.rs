@@ -21,13 +21,22 @@ mod runner;
 use clap::{ArgMatches, Arg, App};
 use chrono::prelude::*;
 use spec::SimulationSpec;
+use std::error::Error;
 use std::fs::File;
 use std::path::Path;
 use std::io;
 use std::collections::HashSet;
+use std::process;
 use simplelog::{SharedLogger, CombinedLogger, TermLogger, WriteLogger, LevelFilter, Config};
 
 fn main() {
+    if let Err(err) = run() {
+        error!("Simulation could not be completed due to error: {}", err);
+        process::exit(1);
+    }
+}
+
+fn run() -> Result<(), Box<Error>> {
     let matches = App::new("aitios")
         .version("0.1")
         .author("krachzack <hello@phstadler.com>")
@@ -59,21 +68,17 @@ fn main() {
         )
         .get_matches();
 
-    match configure_logging(&matches) {
-        Err(err) => {
-            eprintln!("[ABORT] Failed to set up logging: {}", err);
-            return;
-        }
-        _ => ()
-    };
+    if let Err(err) = configure_logging(&matches) {
+        eprintln!("[ABORT] Failed to set up logging: {}", err);
+        return Err(err.into());
+    }
 
     let spec_file_path = matches.value_of("SIMULATION_SPEC_FILE")
         .expect("No simulation spec file provided");
 
     info!("Loading simulation described at \"{}\" and preparing data…", spec_file_path);
 
-    let mut runner = runner::load(spec_file_path)
-        .unwrap();
+    let mut runner = runner::load(spec_file_path)?;
 
     info!("Simulation is ready.");
 
@@ -85,7 +90,9 @@ fn main() {
     info!("Running…");
     runner.run();
 
-    info!("Finished simulation, done.")
+    info!("Finished simulation, done.");
+
+    Ok(())
 }
 
 fn validate_simulation_spec(simulation_spec_file: String) -> Result<(), String> {
