@@ -1,3 +1,4 @@
+use std::path::PathBuf;
 
 #[derive(Debug, Deserialize)]
 pub enum EffectSpec {
@@ -15,10 +16,76 @@ pub enum EffectSpec {
         obj_pattern: Option<String>,
         mtl_pattern: Option<String>
     },
+    /// Writes the scene with the effects before the declaration to the
+    /// given paths. This should usually the last step, but exporting
+    /// before can be useful for debugging.
+    #[serde(rename="export")]
+    Export {
+        obj_pattern: Option<String>,
+        mtl_pattern: Option<String>
+    },
+    /// Uses the concentration of the substance with the given name to create
+    /// new textures for all entities with a material that has a name equal to
+    /// one of the ones specified in the materials list.
+    ///
+    /// Allowed map types are normal, displacement, albedo, metallicity and
+    /// roughness. Each use a specialiced blending technique and are specified
+    /// with the path to a sample texture and an influence factor.
+    ///
+    /// Width and height of the output textures are equal to the sizes of the
+    /// original textures. If an applicable material does not define an original
+    /// texture for a map, the map stop with the largest substance sample texture
+    /// size defines the output texture size.
+    ///
+    /// Multiple blend effects are allowed and will be applied in declaration order.
+    #[serde(rename="layer")]
+    Layer {
+        /// A list of material names where on each entity that uses it, a new material will be derived to replace it.
+        materials: Vec<String>,
+        /// The name of the substance that defines the texel concentration.
+        substance: String,
+        #[serde(default = "default_surfel_lookup")]
+        surfel_lookup: SurfelLookup,
+        #[serde(default = "default_bleed")]
+        island_bleed: usize,
+        // REVIEW should normal and displacement be usable together? maybe the normal map should be derived from the displacement map to ensure consistency
+        normal: Option<Blend>,
+        displacement: Option<Blend>,
+        albedo: Option<Blend>,
+        metallicity: Option<Blend>,
+        roughness: Option<Blend>
+    },
     #[serde(rename="dump_surfels")]
     DumpSurfels {
         obj_pattern: String
     }
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct Blend {
+    /// Texture samples at specified concentrations. Unless explicitly specified, cenith
+    /// 0.0 is populated automatically with the original texture if left unspecified.
+    /// If no stop is specified, the implicit stop at 0.0 will trigger the use of the
+    /// original texture without blending. This can still be useful with an influence
+    /// lower than one to blend over the original texture after preceding blending.
+    pub stops: Vec<Stop>,
+    /// Multiplier for the blending the newly created texture together with the original texture.
+    /// Influence 0 leaves the original texture completely intact, the default of 1 replaces the
+    /// original texture completely with the blended version.
+    #[serde(default = "default_influence")]
+    pub influence: f32,
+    /// {entity} {iteration} {id} {substance}
+    pub tex_pattern: String
+}
+
+#[derive(Debug, Deserialize, Clone)]
+pub struct Stop {
+    /// Path to the texture sample.
+    pub sample: Option<PathBuf>,
+    /// The concentration where this texture has maximum influence.
+    /// To interpolate a given concentration, interpolation is performed
+    /// between the textures at the cenith before and after.
+    pub cenith: f32
 }
 
 #[derive(Debug, Deserialize, Clone, Copy)]
@@ -30,6 +97,10 @@ pub enum SurfelLookup {
 
 fn default_bleed() -> usize {
     2
+}
+
+fn default_influence() -> f32 {
+    1.0
 }
 
 fn default_surfel_lookup() -> SurfelLookup {

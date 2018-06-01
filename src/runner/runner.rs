@@ -1,4 +1,4 @@
-use spec::{SimulationSpec, EffectSpec, SurfelLookup};
+use spec::{SimulationSpec, EffectSpec, SurfelLookup, Blend, Stop};
 use sim::Simulation;
 use scene::{Entity, MaterialBuilder};
 use tex::{self, Density, Rgba, build_surfel_lookup_table};
@@ -94,8 +94,77 @@ impl SimulationRunner {
                 ref mtl_pattern,
                 ..
             } => self.perform_density_effect(width, height, island_bleed, tex_pattern, obj_pattern, mtl_pattern),
-            &EffectSpec::DumpSurfels { ref obj_pattern } => self.dump_surfels(obj_pattern)
+            &EffectSpec::DumpSurfels { ref obj_pattern } => self.dump_surfels(obj_pattern),
+            &EffectSpec::Layer {
+                ref materials,
+                ref substance,
+                ref surfel_lookup,
+                island_bleed,
+                ref normal,
+                ref displacement,
+                ref albedo,
+                ref metallicity,
+                ref roughness
+            } => self.perform_layer(
+                materials,
+                substance,
+                surfel_lookup,
+                island_bleed,
+                normal,
+                displacement,
+                albedo,
+                metallicity,
+                roughness
+            ),
+            &EffectSpec::Export {
+                ref obj_pattern,
+                ref mtl_pattern
+            } => self.export_scene(&self.entities, obj_pattern, mtl_pattern)
         }
+    }
+
+    fn export_scene(&self, entities: &Vec<Entity>, obj_pattern: &Option<String>, mtl_pattern: &Option<String>) {
+        let datetime = &self.creation_time.to_rfc3339()
+                .replace(":", "_");
+
+        match (obj_pattern, mtl_pattern) {
+                (&Some(ref obj_pattern), &Some(ref mtl_pattern)) => {
+                    let obj_filename = obj_pattern.replace("{iteration}", &format!("{}", self.iteration))
+                        .replace("{datetime}", datetime);
+
+                    let mtl_filename = mtl_pattern.replace("{iteration}", &format!("{}", self.iteration))
+                        .replace("{datetime}", datetime);
+
+                    info!("Persisting scene: {}", obj_filename);
+
+                    create_file_recursively(&obj_filename)
+                        .expect("Failed to create OBJ file when persisting effect results");
+                    create_file_recursively(&mtl_filename)
+                        .expect("Failed to create MTL file when persisting effect results");
+
+                    obj::save(entities.iter(), Some(obj_filename), Some(mtl_filename))
+                        .expect("Failed to save OBJ/MTL");
+                },
+                (&None, &None) => (),
+                _ => unimplemented!("Individual OBJ/MTL output without its counterpart unsupported by now. Export counterpart too to make it work.")
+            }
+    }
+
+    fn perform_layer(
+        &self,
+        materials: &Vec<String>,
+        substance: &String,
+        surfel_lookup: &SurfelLookup,
+        island_bleed: usize,
+        // REVIEW should normal and displacement be usable together? maybe the normal map should be derived from the displacement map to ensure consistency
+        normal: &Option<Blend>,
+        displacement: &Option<Blend>,
+        albedo: &Option<Blend>,
+        metallicity: &Option<Blend>,
+        roughness: &Option<Blend>
+    )
+    {
+        unimplemented!()
     }
 
     fn perform_density_effect(&self, width: usize, height: usize, island_bleed: usize, tex_pattern: &String, obj_pattern: &Option<String>, mtl_pattern: &Option<String>) {
@@ -133,10 +202,10 @@ impl SimulationRunner {
                     self.sim.surface(),
                     &self.surfel_tables.get(&surfel_table_resolution).unwrap()[idx]
                 );
-                info!("Writing density: {}", &tex_filename);
+                // info!("Writing density: {}", &tex_filename);
 
                 tex::ImageRgba8(density_tex)
-                    .save(fout, tex::PNG)
+                    .write_to(fout, tex::PNG)
                     .expect("Density texture could not be persisted");
 
                 if obj_pattern.is_some() || mtl_pattern.is_some() {

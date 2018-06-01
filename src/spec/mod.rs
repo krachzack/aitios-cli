@@ -6,4 +6,4 @@ mod effect;
 pub use self::sim::SimulationSpec;
 pub use self::surfel::{SurfelSpec, SurfelRuleSpec};
 pub use self::source::TonSourceSpec;
-pub use self::effect::{EffectSpec, SurfelLookup};
+pub use self::effect::{EffectSpec, SurfelLookup, Blend, Stop};
