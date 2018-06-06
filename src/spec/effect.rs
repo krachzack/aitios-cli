@@ -72,6 +72,7 @@ pub struct Blend {
     /// Multiplier for the blending the newly created texture together with the original texture.
     /// Influence 0 leaves the original texture completely intact, the default of 1 replaces the
     /// original texture completely with the blended version.
+    /// Note that texture samples may also be partly transparent.
     #[serde(default = "default_influence")]
     pub influence: f32,
     /// {entity} {iteration} {id} {substance}

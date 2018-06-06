@@ -17,6 +17,7 @@ extern crate simplelog;
 
 mod spec;
 mod runner;
+mod files;
 
 use clap::{ArgMatches, Arg, App};
 use chrono::prelude::*;

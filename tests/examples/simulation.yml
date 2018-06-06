@@ -24,7 +24,14 @@ effects:
       albedo:
         tex_pattern: "tests/output-{datetime}/iteration-{iteration}/{id}-{entity}-{substance}-albedo.png"
         stops:
-          - sample: "non-existing-map-for-weathered-bronze.png"
-            cenith: 1.0
+          - sample: "tests/examples/rust_stops/rust_nothing.png"
+            cenith: 0.0
+          - sample: "tests/examples/rust_stops/rust_notmuch.jpg"
+            cenith: 0.4
+          - sample: "tests/examples/rust_stops/rust_medium.jpg"
+            cenith: 0.5
+  - export:
+      obj_pattern: "tests/output-{datetime}/iteration-{iteration}/blent.obj"
+      mtl_pattern: "tests/output-{datetime}/iteration-{iteration}/blent.mtl"
 
 
