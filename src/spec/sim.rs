@@ -48,9 +48,9 @@ mod test {
                 ref mtl_pattern,
                 ..
             } => {
-                assert_eq!(tex_pattern, "tests/output/{iteration}-{id}-{entity}-{substance}.png");
-                assert_eq!(obj_pattern.as_ref().unwrap(), "tests/output/{iteration}-{substance}.obj");
-                assert_eq!(mtl_pattern.as_ref().unwrap(), "tests/output/{iteration}-{substance}.mtl");
+                assert_eq!(tex_pattern, "tests/output-{datetime}/iteration-{iteration}/{id}-{entity}-{substance}.png");
+                assert_eq!(obj_pattern.as_ref().unwrap(), "tests/output-{datetime}/iteration-{iteration}/{substance}.obj");
+                assert_eq!(mtl_pattern.as_ref().unwrap(), "tests/output-{datetime}/iteration-{iteration}/{substance}.mtl");
             },
             _ => ()
         }

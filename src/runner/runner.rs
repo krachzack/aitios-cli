@@ -209,20 +209,31 @@ impl SimulationRunner {
             .enumerate()
             .filter(|(_, e)| materials.iter().any(|m| m == e.material.name()))
             .for_each(|(idx, entity)| {
-                if let Some(_normal) = normal { unimplemented!() }
+                let mut mat = MaterialBuilder::from(&*entity.material);
 
-                if let Some(_displacement) = displacement { unimplemented!() }
+                if let Some(_normal) = normal { unimplemented!("No algorithm for blending normals implemented yet") }
+
+                if let Some(displacement) = displacement {
+                    let new_tex_path = self.perform_blend(entity, entity.material.displacement_map(), displacement, substance_idx, idx, surfel_lookup, island_bleed);
+                    mat = mat.displacement_map(new_tex_path);
+                }
 
                 if let Some(albedo) = albedo {
                     let new_tex_path = self.perform_blend(entity, entity.material.diffuse_color_map(), albedo, substance_idx, idx, surfel_lookup, island_bleed);
-                    entity.material = Rc::new(MaterialBuilder::from(&*entity.material)
-                        .diffuse_color_map(new_tex_path)
-                        .build());
+                    mat = mat.diffuse_color_map(new_tex_path);
                 }
 
-                if let Some(_metallicity) = metallicity { unimplemented!() }
+                if let Some(metallicity) = metallicity {
+                    let new_tex_path = self.perform_blend(entity, entity.material.metallic_map(), metallicity, substance_idx, idx, surfel_lookup, island_bleed);
+                    mat = mat.metallic_map(new_tex_path);
+                }
 
-                if let Some(_roughness) = roughness { unimplemented!() }
+                if let Some(roughness) = roughness {
+                    let new_tex_path = self.perform_blend(entity, entity.material.roughness_map(), roughness, substance_idx, idx, surfel_lookup, island_bleed);
+                    mat = mat.roughness_map(new_tex_path);
+                }
+
+                entity.material = Rc::new(mat.build());
             });
 
     }
@@ -378,12 +389,38 @@ fn build_surfel_tables(effects: &Vec<EffectSpec>, entities: &Vec<Entity>, surfac
                 .for_each(|(idx, e)| {
                     let material = &e.material;
 
-                    if let Some(_normal) = normal {
-                        unimplemented!("Blending of normal maps is unsupported as of yet")
+                    if let Some(normal) = normal {
+                        let (width, height) = blend_output_size(
+                            normal,
+                            material.normal_map()
+                        );
+
+                        surfel_tables.prepare(
+                            idx,
+                            width as usize,
+                            height as usize,
+                            surfel_lookup,
+                            island_bleed,
+                            entities,
+                            surface
+                        )
                     }
 
-                    if let Some(_displacement) = displacement {
-                        unimplemented!("Blending of displacement maps is unsupported as of yet")
+                    if let Some(displacement) = displacement {
+                        let (width, height) = blend_output_size(
+                            displacement,
+                            material.displacement_map()
+                        );
+
+                        surfel_tables.prepare(
+                            idx,
+                            width as usize,
+                            height as usize,
+                            surfel_lookup,
+                            island_bleed,
+                            entities,
+                            surface
+                        )
                     }
 
                     if let Some(albedo) = albedo {
@@ -403,15 +440,39 @@ fn build_surfel_tables(effects: &Vec<EffectSpec>, entities: &Vec<Entity>, surfac
                         )
                     }
 
-                    if let Some(_metallicity) = metallicity {
-                        unimplemented!("Blending of metallicity maps is unsupported as of yet")
+                    if let Some(metallicity) = metallicity {
+                        let (width, height) = blend_output_size(
+                            metallicity,
+                            material.metallic_map()
+                        );
+
+                        surfel_tables.prepare(
+                            idx,
+                            width as usize,
+                            height as usize,
+                            surfel_lookup,
+                            island_bleed,
+                            entities,
+                            surface
+                        )
                     }
 
-                    if let Some(_roughness) = roughness {
-                        unimplemented!("Blending of roughness maps is unsupported as of yet")
-                    }
+                    if let Some(roughness) = roughness {
+                        let (width, height) = blend_output_size(
+                            roughness,
+                            material.roughness_map()
+                        );
 
-                    // FIXME normal etc, not only albedo, but OBJ maps have no obvious equivalent for other pbr maps
+                        surfel_tables.prepare(
+                            idx,
+                            width as usize,
+                            height as usize,
+                            surfel_lookup,
+                            island_bleed,
+                            entities,
+                            surface
+                        )
+                    }
 
                 }),
             &EffectSpec::Density {
