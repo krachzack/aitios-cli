@@ -207,7 +207,7 @@ impl SimulationRunner {
 
         entities.iter_mut()
             .enumerate()
-            .filter(|(_, e)| materials.iter().any(|m| m == e.material.name()))
+            .filter(|(_, e)| is_entity_applicable_for_materials(e, materials))
             .for_each(|(idx, entity)| {
                 let mut mat = MaterialBuilder::from(&*entity.material);
 
@@ -228,6 +228,7 @@ impl SimulationRunner {
                     mat = mat.metallic_map(new_tex_path);
                 }
 
+                // REVIEW since mtl supports glossiness, maybe invert the roughness with a MTL filter
                 if let Some(roughness) = roughness {
                     let new_tex_path = self.perform_blend(entity, entity.material.roughness_map(), roughness, substance_idx, idx, surfel_lookup, island_bleed);
                     mat = mat.roughness_map(new_tex_path);
@@ -279,6 +280,8 @@ impl SimulationRunner {
 
         let mut tex_file = create_file_recursively(&tex_filename)
             .expect("Could not create texture file for blending effect");
+
+        // FIXME influence needs to come into play now
 
         tex::ImageRgba8(blend_result_tex)
             .write_to(&mut tex_file, tex::PNG)
@@ -366,6 +369,11 @@ impl SimulationRunner {
     }
 }
 
+// Underscore material is catchall as always, empty array also means admit all materials
+fn is_entity_applicable_for_materials(entity: &Entity, materials: &Vec<String>) -> bool {
+    materials.is_empty() || materials.iter().any(|m| m == "_" || m == entity.material.name())
+}
+
 fn build_surfel_tables(effects: &Vec<EffectSpec>, entities: &Vec<Entity>, surface: &Surface) -> SurfelTableCache {
     let mut surfel_tables = SurfelTableCache::new();
 
@@ -384,7 +392,8 @@ fn build_surfel_tables(effects: &Vec<EffectSpec>, entities: &Vec<Entity>, surfac
             } => entities.iter()
                 .enumerate()
                 // Ignore entities with a material not affected by this synthesis
-                .filter(|(_, e)| materials.iter().any(|m| m == e.material.name()))
+                // Do not filter anything if no material name given
+                .filter(|(_, e)| is_entity_applicable_for_materials(e, materials))
                 // And cache
                 .for_each(|(idx, e)| {
                     let material = &e.material;
