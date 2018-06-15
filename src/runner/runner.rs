@@ -2,7 +2,7 @@ use asset::obj;
 use sim::Simulation;
 use scene::{Entity, MaterialBuilder};
 use spec::{EffectSpec, SimulationSpec, SurfelLookup, Blend};
-use tex::{Density, Rgba, GuidedBlend, Stop, DynamicImage};
+use tex::{Density, Rgba, GuidedBlend, Stop, DynamicImage, open, Pixel};
 use std::path::PathBuf;
 use std::fmt;
 use std::rc::Rc;
@@ -269,7 +269,32 @@ impl SimulationRunner {
         );
 
         let guided_blend = Self::make_guided_blend(blend, original_map);
-        let blend_result_tex = guided_blend.perform(&guide);
+        let mut blend_result_tex = guided_blend.perform(&guide);
+
+        // If original map is specified, blend the synthesized
+        // weathering signs over the original map.
+        // If no original texture, keep the output map with transparency
+        // without blending over.
+        if let Some(original_map) = original_map {
+            let original_map = open(original_map).unwrap();
+
+            assert_eq!(
+                blend_result_tex.dimensions(), original_map.dimensions(),
+                "When original map is present, result of layer blend should have same dimensions"
+            );
+
+            blend_result_tex.pixels_mut()
+                .zip(original_map.pixels())
+                .for_each(|(top, (_, _, bottom))| {
+                    let mut bottom = bottom.clone();
+                    // Reduce alpha of top according to influence
+                    if blend.influence != 1.0 {
+                        top.apply_with_alpha(|c| c, |a| (((a as f32) * blend.influence) as u8));
+                    }
+                    bottom.blend(top);
+                    *top = bottom;
+                });
+        }
 
         let tex_filename = blend.tex_pattern
             .replace("{iteration}", &format!("{}", self.iteration))

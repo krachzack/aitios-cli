@@ -88,28 +88,6 @@ fn load_source_specs(sources: &Vec<PathBuf>) -> Vec<TonSourceSpec> {
         .collect()
 }
 
-/*fn build_surfel_rules(surfel_specs_by_material_name: &HashMap<String, SurfelSpec>, unique_substance_names: &Vec<String>) -> Vec<SurfelRule> {
-    surfel_specs_by_material_name.values()
-        .flat_map(|s| s.rules.iter())
-        .map(|s| match s {
-            &SurfelRuleSpec::Transfer { ref from, ref to, factor } =>
-                SurfelRule::Transfer {
-                    source_substance_idx: unique_substance_names.iter().position(|n| n == from)
-                        .expect(&format!("Surfel transport rule references unknown substance name {}", from)),
-                    target_substance_idx: unique_substance_names.iter().position(|n| n == to)
-                        .expect(&format!("Surfel transport rule references unknown substance name {}", to)),
-                    factor
-                },
-            &SurfelRuleSpec::Deteriorate { ref from, factor } =>
-                SurfelRule::Deteriorate {
-                    substance_idx: unique_substance_names.iter().position(|n| n == from)
-                        .expect(&format!("Surfel transport rule references unknown substance name {}", from)),
-                    factor
-                }
-        })
-        .collect()
-}*/
-
 fn build_sources(sources: &Vec<TonSourceSpec>, unique_substance_names: &Vec<String>) -> Vec<TonSource> {
     sources.iter()
         .map(|spec| {
