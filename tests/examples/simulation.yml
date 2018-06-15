@@ -1,55 +1,55 @@
 name: Park Scene
 description: "A single buddha in the center gets bombarded with rain from the sky, making it rust, everything not made of bronze is concrete."
-scene: "tests/assets/buddha.obj"
+scene: "../assets/buddha.obj"
 iterations: 30
 sources:
-  - "tests/examples/rain.yml"
+  - "rain.yml"
 # Maps MTL material names against surfel descriptions
 surfels_by_material:
-  bronze: "tests/examples/iron.yml"
+  bronze: "iron.yml"
   # catchall
-  _: "tests/examples/concrete.yml"
+  _: "concrete.yml"
 effects:
   - density:
       width: 4096
       height: 4096
       island_bleed: 3
-      tex_pattern: "tests/output-{datetime}/iteration-{iteration}/{id}-{entity}-{substance}.png"
-      obj_pattern: "tests/output-{datetime}/iteration-{iteration}/{substance}.obj"
-      mtl_pattern: "tests/output-{datetime}/iteration-{iteration}/{substance}.mtl"
+      tex_pattern: "test-output/test-{datetime}/iteration-{iteration}/{id}-{entity}-{substance}.png"
+      obj_pattern: "test-output/test-{datetime}/iteration-{iteration}/{substance}.obj"
+      mtl_pattern: "test-output/test-{datetime}/iteration-{iteration}/{substance}.mtl"
   - layer:
       materials: ["bronze"]
       substance: "rust"
       island_bleed: 3
       albedo:
-        tex_pattern: "tests/output-{datetime}/iteration-{iteration}/{id}-{entity}-{substance}-albedo.png"
+        tex_pattern: "test-output/test-{datetime}/iteration-{iteration}/{id}-{entity}-{substance}-albedo.png"
         stops:
-          - sample: "tests/examples/rust_stops/rust_nothing.png"
+          - sample: "rust_stops/rust_nothing.png"
             cenith: 0.0
-          - sample: "tests/examples/rust_stops/rust_alittle.png"
+          - sample: "rust_stops/rust_alittle.png"
             cenith: 0.2
-          - sample: "tests/examples/rust_stops/rust_alittlemore.png"
+          - sample: "rust_stops/rust_alittlemore.png"
             cenith: 0.3
-          - sample: "tests/examples/rust_stops/rust_notmuch.jpg"
+          - sample: "rust_stops/rust_notmuch.jpg"
             cenith: 0.4
-          - sample: "tests/examples/rust_stops/rust_medium.jpg"
+          - sample: "rust_stops/rust_medium.jpg"
             cenith: 0.5
       metallicity:
-        tex_pattern: "tests/output-{datetime}/iteration-{iteration}/{id}-{entity}-{substance}-metallicity.png"
+        tex_pattern: "test-output/test-{datetime}/iteration-{iteration}/{id}-{entity}-{substance}-metallicity.png"
         stops:
-          - sample: "tests/examples/white_512x512.png"
+          - sample: "white_512x512.png"
             cenith: 0.0
-          - sample: "tests/examples/black_512x512.png"
+          - sample: "black_512x512.png"
             cenith: 0.7
       roughness:
-        tex_pattern: "tests/output-{datetime}/iteration-{iteration}/{id}-{entity}-{substance}-roughness.png"
+        tex_pattern: "test-output/test-{datetime}/iteration-{iteration}/{id}-{entity}-{substance}-roughness.png"
         stops:
-          - sample: "tests/examples/black_512x512.png"
+          - sample: "black_512x512.png"
             cenith: 0.0
-          - sample: "tests/examples/white_512x512.png"
+          - sample: "white_512x512.png"
             cenith: 0.7
   - export:
-      obj_pattern: "tests/output-{datetime}/iteration-{iteration}/blent.obj"
-      mtl_pattern: "tests/output-{datetime}/iteration-{iteration}/blent.mtl"
+      obj_pattern: "test-output/test-{datetime}/iteration-{iteration}/blent.obj"
+      mtl_pattern: "test-output/test-{datetime}/iteration-{iteration}/blent.mtl"
 
 

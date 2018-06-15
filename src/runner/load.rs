@@ -3,7 +3,7 @@ use geom::{Vec3, Vertex};
 use asset::obj;
 use scene::{Entity, Mesh};
 use sim::{Simulation, SurfelData, SurfelRule, TonSourceBuilder, TonSource};
-use spec::{SimulationSpec, SurfelSpec, SurfelRuleSpec, TonSourceSpec};
+use spec::{SimulationSpec, SurfelSpec, SurfelRuleSpec, TonSourceSpec, EffectSpec, Stop};
 use surf::{Surface, SurfaceBuilder, SurfelSampling, Surfel};
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
@@ -11,22 +11,41 @@ use std::path::PathBuf;
 use std::cmp::Eq;
 use std::hash::Hash;
 use serde_yaml;
+use files::Resolver;
+use std::io::Error;
 
-pub fn load<P : Into<PathBuf>>(simulation_spec_file: P) -> Result<SimulationRunner, String> {
-    let mut simulation_spec_file = File::open(simulation_spec_file.into())
+pub fn load<P : Into<PathBuf>>(simulation_spec_file: P) -> Result<SimulationRunner, Box<Error>> {
+    let simulation_spec_path = simulation_spec_file.into();
+    let resolver = {
+        // Precedence:
+        // 1. Absolute and existing paths
+        // 2. Relative to directory that contains simulation spec
+        // 3. Current working directory, if different from 2.
+
+        let mut resolver = Resolver::new();
+
+        if let Some(spec_parent) = simulation_spec_path.parent() {
+            resolver.add_base(spec_parent).unwrap();
+        }
+
+        resolver.add_base(".").unwrap();
+        resolver
+    };
+
+    let mut simulation_spec_file = File::open(&simulation_spec_path)
             .expect("Test simulation spec could not be opened");
 
-    let spec : SimulationSpec = serde_yaml::from_reader(&mut simulation_spec_file)
+    let mut spec : SimulationSpec = serde_yaml::from_reader(&mut simulation_spec_file)
         .expect("Failed parsing example simulation spec");
 
-    let surfel_specs_by_material_name = surfel_specs_by_material_name(&spec);
+    let surfel_specs_by_material_name = surfel_specs_by_material_name(&spec, &resolver);
 
     let entities = {
-        let scene_path = &spec.scene;
-        let entities = obj::load(scene_path);
+        let scene_path = resolver.resolve(&spec.scene)?;
+        let entities = obj::load(&scene_path);
 
         let mut entities = match entities {
-            Err(_) => return Err(format!("Failed loading scene at: {}", scene_path.file_name().unwrap().to_str().unwrap())),
+            Err(_) => panic!("Failed loading scene at: {}", scene_path.file_name().unwrap().to_str().unwrap()),
             Ok(entities) => entities
         };
 
@@ -43,7 +62,7 @@ pub fn load<P : Into<PathBuf>>(simulation_spec_file: P) -> Result<SimulationRunn
         entities
     };
 
-    let source_specs = load_source_specs(&spec.sources);
+    let source_specs = load_source_specs(&spec.sources, &resolver);
 
     // For faster substance access, each substance name gets an ID which is an
     // index into this vector. Names can occur in sources, and surfels
@@ -55,7 +74,7 @@ pub fn load<P : Into<PathBuf>>(simulation_spec_file: P) -> Result<SimulationRunn
     let unique_substance_names : Vec<String> = unique_substance_names.into_iter().cloned().collect();
 
     //let surfel_rules = build_surfel_rules(&surfel_specs_by_material_name, &unique_substance_names);
-    let sources = build_sources(&source_specs, &unique_substance_names);
+    let sources = build_sources(&source_specs, &unique_substance_names, &resolver);
     let surface = build_surface(&entities, &surfel_specs_by_material_name, &unique_substance_names, spec.surfel_distance);
 
     let simulation = {
@@ -71,13 +90,53 @@ pub fn load<P : Into<PathBuf>>(simulation_spec_file: P) -> Result<SimulationRunn
         Simulation::new(sources, all_triangles, surface, vec![])
     };
 
+    resolve_effect_spec_paths(&mut spec.effects, &resolver);
+
     Ok(SimulationRunner::new(spec, unique_substance_names, simulation, entities))
 }
 
-fn load_source_specs(sources: &Vec<PathBuf>) -> Vec<TonSourceSpec> {
+fn resolve_effect_spec_paths(specs: &mut Vec<EffectSpec>, resolver: &Resolver) {
+    for effect in specs.iter_mut() {
+        match effect {
+            EffectSpec::Layer {
+                ref mut normal,
+                ref mut displacement,
+                ref mut albedo,
+                ref mut metallicity,
+                ref mut roughness,
+                ..
+             } => {
+                 if let Some(normal) = normal {
+                     resolve_stop_list_paths(&mut normal.stops, resolver);
+                 }
+                 if let Some(displacement) = displacement {
+                     resolve_stop_list_paths(&mut displacement.stops, resolver);
+                 }
+                 if let Some(albedo) = albedo {
+                     resolve_stop_list_paths(&mut albedo.stops, resolver);
+                 }
+                 if let Some(metallicity) = metallicity {
+                     resolve_stop_list_paths(&mut metallicity.stops, resolver);
+                 }
+                 if let Some(roughness) = roughness {
+                     resolve_stop_list_paths(&mut roughness.stops, resolver);
+                 }
+             },
+            _ => ()
+        }
+    }
+}
+
+fn resolve_stop_list_paths(stops: &mut Vec<Stop>, resolver: &Resolver) {
+    for stop in stops.iter_mut() {
+        stop.sample = stop.sample.as_ref().map(|s| resolver.resolve(s).unwrap());
+    }
+}
+
+fn load_source_specs(sources: &Vec<PathBuf>, resolver: &Resolver) -> Vec<TonSourceSpec> {
     sources.iter()
         .map(|s| {
-            let spec_file = &mut File::open(s)
+            let spec_file = &mut File::open(resolver.resolve(s).unwrap())
                 .expect(&format!("Ton source spec file at \"{:?}\" could not be found", s));
 
             let spec : TonSourceSpec = serde_yaml::from_reader(spec_file)
@@ -88,10 +147,10 @@ fn load_source_specs(sources: &Vec<PathBuf>) -> Vec<TonSourceSpec> {
         .collect()
 }
 
-fn build_sources(sources: &Vec<TonSourceSpec>, unique_substance_names: &Vec<String>) -> Vec<TonSource> {
+fn build_sources(sources: &Vec<TonSourceSpec>, unique_substance_names: &Vec<String>, resolver: &Resolver) -> Vec<TonSource> {
     sources.iter()
         .map(|spec| {
-            let mesh = &obj::load(&spec.mesh)
+            let mesh = &obj::load(&resolver.resolve(&spec.mesh).unwrap())
                 .expect(&format!("Ton source mesh could not be loaded at \"{:?}\"", spec.mesh))[0].mesh;
 
             let mut builder = TonSourceBuilder::new();
@@ -115,11 +174,11 @@ fn build_sources(sources: &Vec<TonSourceSpec>, unique_substance_names: &Vec<Stri
         .collect()
 }
 
-fn surfel_specs_by_material_name(spec: &SimulationSpec) -> HashMap<String, SurfelSpec> {
+fn surfel_specs_by_material_name(spec: &SimulationSpec, resolver: &Resolver) -> HashMap<String, SurfelSpec> {
     spec.surfels_by_material.iter()
         .map(|(key, val)| {
             // FIXME error handling
-            let surfel_file = &mut File::open(val)
+            let surfel_file = &mut File::open(resolver.resolve(val).unwrap())
                 .expect(&format!("Surfel spec could not be found at {:?}", val));
 
             let surfel_spec : SurfelSpec = serde_yaml::from_reader(surfel_file)

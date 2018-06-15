@@ -37,8 +37,8 @@ mod test {
         assert_eq!(spec.name, "Park Scene");
         assert_eq!(spec.scene.file_name().unwrap().to_str().unwrap(), "buddha.obj");
         assert_eq!(spec.iterations, 30);
-        assert_eq!(spec.surfels_by_material.get("bronze").unwrap(), "tests/examples/iron.yml");
-        assert_eq!(spec.surfels_by_material.get("_").unwrap(), "tests/examples/concrete.yml");
+        assert_eq!(spec.surfels_by_material.get("bronze").unwrap(), "iron.yml");
+        assert_eq!(spec.surfels_by_material.get("_").unwrap(), "concrete.yml");
         assert_eq!(spec.sources[0].file_name().unwrap().to_str().unwrap(), "rain.yml");
 
         match &spec.effects[0] {
@@ -48,9 +48,9 @@ mod test {
                 ref mtl_pattern,
                 ..
             } => {
-                assert_eq!(tex_pattern, "tests/output-{datetime}/iteration-{iteration}/{id}-{entity}-{substance}.png");
-                assert_eq!(obj_pattern.as_ref().unwrap(), "tests/output-{datetime}/iteration-{iteration}/{substance}.obj");
-                assert_eq!(mtl_pattern.as_ref().unwrap(), "tests/output-{datetime}/iteration-{iteration}/{substance}.mtl");
+                assert_eq!(tex_pattern, "test-output/test-{datetime}/iteration-{iteration}/{id}-{entity}-{substance}.png");
+                assert_eq!(obj_pattern.as_ref().unwrap(), "test-output/test-{datetime}/iteration-{iteration}/{substance}.obj");
+                assert_eq!(mtl_pattern.as_ref().unwrap(), "test-output/test-{datetime}/iteration-{iteration}/{substance}.mtl");
             },
             _ => ()
         }

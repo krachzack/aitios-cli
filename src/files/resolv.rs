@@ -122,11 +122,10 @@ impl Resolver {
         // Otherwise, interpret any path as relative, even if it was a non-existing absolute path.
         for mut resolve_attempt in self.bases.iter().cloned() {
             resolve_attempt.push(search_path);
-            let resolve_attempt = resolve_attempt.canonicalize()?;
-
-            if resolve_attempt.exists() {
-                return Ok(resolve_attempt);
-            }
+             if let Ok(resolve_attempt) = resolve_attempt.canonicalize() {
+                 // No further existence check required, canonicalize does this
+                 return Ok(resolve_attempt);
+             }
         }
 
         Err(
@@ -287,8 +286,8 @@ mod test {
 
     #[test]
     fn relative_from_bases_precedence() {
-        let outer_temp = "resolver_test_100";
-        let directory = "resolver_test_inner";
+        let outer_temp = "resolver_test_precedence";
+        let directory = "resolver_test_precedence_inner_dir";
         let inner_temp = format!("{}/{}", directory, outer_temp);
 
         create_dir(directory).unwrap();
@@ -317,6 +316,26 @@ mod test {
 
         remove_file(inner_temp).unwrap();
         remove_file(outer_temp).unwrap();
+        remove_dir(directory).unwrap();
+    }
+
+    /// Tests if paths can contain ..
+    #[test]
+    fn parent_dir() {
+        let outer_filename = "resolver_test_parent";
+        let directory = "resolver_test_parent_inner";
+
+        create_dir(directory).unwrap();
+        {
+            let _inner_temp = File::create(&outer_filename).unwrap();
+            let mut resolver = Resolver::new();
+            resolver.add_base(&directory).unwrap();
+
+            assert!(resolver.resolve(&outer_filename).is_err());
+            assert!(resolver.resolve(&format!("../{}", outer_filename)).is_ok());
+        }
+
+        remove_file(outer_filename).unwrap();
         remove_dir(directory).unwrap();
     }
 }
