@@ -90,7 +90,9 @@ fn build_resolver(simulation_spec_path: &PathBuf) -> Result<Resolver, Error> {
     let mut resolver = Resolver::new();
 
     if let Some(spec_parent) = simulation_spec_path.parent() {
-        resolver.add_base(spec_parent)?;
+        if !spec_parent.as_os_str().is_empty() {
+            resolver.add_base(spec_parent)?;
+        }
     }
 
     resolver.add_base(
