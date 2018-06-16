@@ -24,16 +24,16 @@ impl Resolver {
     /// Returns an `Err(std::io::Error)` if any component of the given path
     /// is not a directory or does not exist.
     ///
-    /// Note that the current directory is not automatically added.
-    /// It can be added as ".":
+    /// Note that in contrast to all root directories, the current working
+    /// directory is not automatically added. It can be added as ".":
     ///
     /// ```
     /// # use files::Resolver;
-    /// # let mut resolver = Resolver::new();
-    /// resolver.add_base(".")
+    /// let mut resolver = Resolver::new();
+    /// resolver.add_base(".");
     /// ```
-    pub fn add_base<P : Into<PathBuf>>(&mut self, base: P) -> Result<(), Error> {
-        let base = base.into().canonicalize()?;
+    pub fn add_base<P : AsRef<Path>>(&mut self, base: P) -> Result<(), Error> {
+        let base = base.as_ref().canonicalize()?;
 
         if !self.bases.contains(&base) {
             self.bases.push(base);
@@ -43,9 +43,11 @@ impl Resolver {
     }
 
     /// Looks up the given search path in a list of base paths and
-    /// returns an absolute, canonicalized path.
+    /// returns an absolute, canonicalized path, that is, all
+    /// intermediary directories and the final path component exist,
+    /// all symlinks including `.` and `..` are aresolved.
     ///
-    /// If search path is already absolute, checks if it exists.
+    /// If search path is already absolute, checks if it exists first.
     /// If it does exist, it is returned in its canonicalized form,
     /// if it does not exist, it is interpreted as relative to one of
     /// the base paths.
@@ -77,7 +79,7 @@ impl Resolver {
     ///
     ///     // First using existing absolute paths.
     ///     assert!(resolver.resolve("/dev/rand").is_ok());
-    ///     assert!(resolver.resolve("/dev/randidliodl").is_err()); // This on does not exist though and fails
+    ///     assert!(resolver.resolve("/dev/randidliodl").is_err()); // This one does not exist though and fails
     ///
     ///     // Then, try using base paths
     ///     resolver.add_base("/dev");
@@ -92,8 +94,20 @@ impl Resolver {
     ///     );
     /// }
     /// ```
-    pub fn resolve<P : AsRef<Path>>(&self, search_path: &P) -> Result<PathBuf, Error> {
+    pub fn resolve<P : AsRef<Path>>(&self, search_path: P) -> Result<PathBuf, Error> {
         let mut search_path = search_path.as_ref();
+
+        if search_path.as_os_str().is_empty() {
+            return Err(
+                Error::new(
+                    ErrorKind::InvalidData,
+                    format!(
+                        "Empty search path in attempt to resolve in potential base paths {:?}",
+                        &self.bases
+                    )
+                )
+            )
+        }
 
         // If search path is already absolute, first try to canonicalize it and
         // returning it without looking for it in base directories.
@@ -132,7 +146,7 @@ impl Resolver {
             Error::new(
                 ErrorKind::NotFound,
                 format!(
-                    "Search path {:?} could not be found in potential base paths {:?}",
+                    "Search path {:?} could not be resolved using potential base paths {:?}",
                     search_path,
                     &self.bases
                 )
@@ -145,6 +159,7 @@ impl Resolver {
 mod test {
     use super::*;
     use std::fs::{File, remove_file, create_dir, remove_dir};
+    use std::env::current_dir;
 
     #[test]
     fn no_bases_relative_nonexistent() {
@@ -337,5 +352,51 @@ mod test {
 
         remove_file(outer_filename).unwrap();
         remove_dir(directory).unwrap();
+    }
+
+    #[test]
+    fn resolve_empty() {
+        let mut resolver = Resolver::new();
+        assert!(
+            resolver.resolve("").is_err(),
+            "Resolving an empty path should fail"
+        );
+
+        resolver.add_base(".").unwrap();
+        resolver.add_base("..").unwrap();
+        assert!(
+            resolver.resolve("").is_err(),
+            "Resolving an empty path should still fail when adding base directories"
+        );
+    }
+
+    #[test]
+    fn resolve_dot() {
+        let mut resolver = Resolver::new();
+        assert!(
+            resolver.resolve(".").is_err(),
+            "Empty resolver should not resolve dot because it can not be relative to anything"
+        );
+
+        resolver.add_base(".").unwrap();
+        let dot_resolved = resolver.resolve(".").expect("Have >0 base directories, dot should resolve to first base");
+        let cwd = current_dir().unwrap().canonicalize().expect("Could not canonicalize cwd");
+        assert_eq!(
+            dot_resolved,
+            cwd,
+            "Have >0 base directories, dot should resolve to first base"
+        );
+    }
+
+    #[test]
+    fn deduplicate() {
+        let mut resolver = Resolver::new();
+        // Add cwd.
+        resolver.add_base(".").unwrap();
+        assert_eq!(1, resolver.bases.len());
+        // Add cwd again, the base directory count should stay constant,
+        // since it resolves to the same canonicalized directory.
+        resolver.add_base(current_dir().unwrap()).unwrap();
+        assert_eq!(1, resolver.bases.len());
     }
 }
