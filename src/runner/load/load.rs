@@ -20,20 +20,20 @@ pub fn load<P : Into<PathBuf>>(simulation_spec_file: P) -> Result<SimulationRunn
     let simulation_spec_path = simulation_spec_file.into();
 
     let mut simulation_spec_file = File::open(&simulation_spec_path)
-            .context("Test simulation spec could not be opened")?;
+            .context("Test simulation spec could not be opened.")?;
 
     let resolver = build_resolver(&simulation_spec_path)?;
 
     let mut spec : SimulationSpec = serde_yaml::from_reader(&mut simulation_spec_file)
-        .context("Failed parsing simulation spec")?;
+        .context("Failed parsing simulation spec.")?;
 
     let surfel_specs_by_material_name = surfel_specs_by_material_name(&spec, &resolver)?;
 
     let entities = {
         let scene_path = resolver.resolve(&spec.scene)
-            .context("Simulation scene could not be found")?;
+            .context("Simulation scene could not be found.")?;
         let mut entities = obj::load(&scene_path)
-            .context("Simulation scene was found but could not be read")?;
+            .context("Simulation scene was found but could not be read.")?;
 
         // Throw out all entitites which have no mapped surfel spec,
         // unless there is a fallback material named "_".
@@ -60,6 +60,8 @@ pub fn load<P : Into<PathBuf>>(simulation_spec_file: P) -> Result<SimulationRunn
         return Err(From::from(LoadError::EffectsMissing));
     }
 
+    resolve_effect_spec_paths(&mut spec.effects, &resolver)?;
+
     //let surfel_rules = build_surfel_rules(&surfel_specs_by_material_name, &unique_substance_names);
     let sources = build_sources(&source_specs, &unique_substance_names, &resolver)?;
     let surface = build_surface(&entities, &surfel_specs_by_material_name, &unique_substance_names, spec.surfel_distance);
@@ -76,8 +78,6 @@ pub fn load<P : Into<PathBuf>>(simulation_spec_file: P) -> Result<SimulationRunn
         // No global surfel rules, only per substance type mapped from material
         Simulation::new(sources, all_triangles, surface, vec![])
     };
-
-    resolve_effect_spec_paths(&mut spec.effects, &resolver)?;
 
     Ok(SimulationRunner::new(spec, unique_substance_names, simulation, entities))
 }
@@ -129,23 +129,23 @@ fn resolve_effect_spec_paths(specs: &mut Vec<EffectSpec>, resolver: &Resolver) -
              } => {
                  if let Some(normal) = normal {
                      resolve_stop_list_paths(&mut normal.stops, resolver)
-                        .context("Layer normal blend effect references an image that could not be found")?;
+                        .context("Layer normal blend effect references an image that could not be found.")?;
                  }
                  if let Some(displacement) = displacement {
                      resolve_stop_list_paths(&mut displacement.stops, resolver)
-                        .context("Layer displacement blend effect references an image that could not be found")?;
+                        .context("Layer displacement blend effect references an image that could not be found.")?;
                  }
                  if let Some(albedo) = albedo {
                      resolve_stop_list_paths(&mut albedo.stops, resolver)
-                        .context("Layer albedo blend effect references an image that could not be found")?;
+                        .context("Layer albedo blend effect references an image that could not be found.")?;
                  }
                  if let Some(metallicity) = metallicity {
                      resolve_stop_list_paths(&mut metallicity.stops, resolver)
-                        .context("Layer metallicity blend effect references an image that could not be found")?;
+                        .context("Layer metallicity blend effect references an image that could not be found.")?;
                  }
                  if let Some(roughness) = roughness {
                      resolve_stop_list_paths(&mut roughness.stops, resolver)
-                        .context("Layer roughness blend effect references an image that could not be found")?;
+                        .context("Layer roughness blend effect references an image that could not be found.")?;
                  }
              },
             _ => ()
@@ -183,7 +183,7 @@ fn load_source_spec(path: &PathBuf, resolver: &Resolver) -> Result<TonSourceSpec
         .context("Ton source spec file could not be opened.")?;
 
     let spec : TonSourceSpec = serde_yaml::from_reader(spec_file)
-        .context("Parse error for ton source spec")?;
+        .context("Parse error for ton source spec.")?;
 
     Ok(spec)
 }
@@ -229,11 +229,11 @@ fn surfel_specs_by_material_name(spec: &SimulationSpec, resolver: &Resolver) -> 
     for (material_name, surfel_spec) in spec.surfels_by_material.iter() {
         let surfel_spec = &mut File::open(
             resolver.resolve(surfel_spec)
-                .context("Surfel spec could not be found")?
+                .context("Surfel spec could not be found.")?
         )?;
 
         let surfel_spec : SurfelSpec = serde_yaml::from_reader(surfel_spec)
-            .context("Surfel spec could not be parsed")?;
+            .context("Surfel spec could not be parsed.")?;
 
         specs.insert(material_name.clone(), surfel_spec);
     }
