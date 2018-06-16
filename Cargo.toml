@@ -6,6 +6,8 @@ authors = ["krachzack <hello@phstadler.com>"]
 [dependencies]
 clap = "2.31"
 chrono = "0.4"
+failure = "0.1.1"
+failure_derive = "0.1.1"
 log = "0.4"
 simplelog = "0.5"
 serde = "1.0"

@@ -5,6 +5,9 @@ extern crate aitios_surf as surf;
 extern crate aitios_scene as scene;
 extern crate aitios_tex as tex;
 extern crate clap;
+extern crate failure;
+#[macro_use]
+extern crate failure_derive;
 extern crate chrono;
 #[macro_use]
 extern crate serde_derive;
@@ -22,22 +25,38 @@ mod files;
 use clap::{ArgMatches, Arg, App};
 use chrono::prelude::*;
 use spec::SimulationSpec;
-use std::error::Error;
 use std::fs::File;
 use std::path::Path;
 use std::io;
 use std::collections::HashSet;
 use std::process;
 use simplelog::{SharedLogger, CombinedLogger, TermLogger, WriteLogger, LevelFilter, Config};
+use failure::{Error, Fail};
 
 fn main() {
     if let Err(err) = run() {
-        error!("Simulation could not be completed due to error: {}", err);
+        fail_for_humans(&err);
+        fail_for_debugging(err.cause());
         process::exit(1);
     }
 }
 
-fn run() -> Result<(), Box<Error>> {
+fn fail_for_humans(error: &Error) {
+    error!("Simulation could not be completed due to error: {}", error);
+    if let Some(cause) = error.cause().cause() {
+        error!("Cause: {}", cause);
+    }
+}
+
+fn fail_for_debugging(mut error: &Fail) {
+    debug!("Simulation could not be completed due to error: {:?}", error);
+    while let Some(cause) = error.cause() {
+        debug!("Cause: {:?}", cause);
+        error = cause;
+    }
+}
+
+fn run() -> Result<(), Error> {
     let matches = App::new("aitios")
         .version("0.1")
         .author("krachzack <hello@phstadler.com>")

@@ -1,5 +1,23 @@
 use std::path::{Path, PathBuf};
-use std::io::{Error, ErrorKind};
+use std::io;
+
+#[derive(Debug, Fail)]
+pub enum ResolveError {
+    #[fail(display = "Tried to add a base path to a resolver but the given path was empty.")]
+    EmptyBasePath,
+    #[fail(display = "Tried to resolve a search path with a resolver but the given path was empty.")]
+    EmptySearchPath,
+    #[fail(display = "Tried to resolve a search path with a resolver but the given path was empty.")]
+    InaccessibleBasePath {
+        base_path: PathBuf,
+        #[cause] cause: io::Error
+    },
+    #[fail(display = "Resolving search path {:?} failed. It was neither absolute and existing nor found in any of the base paths {:?}.", search_path, bases)]
+    NotFound {
+        search_path: PathBuf,
+        bases: Vec<PathBuf>
+    }
+}
 
 /// Resolves relative and absolute filenames using a list
 /// of base paths that the filenames for lookup can be
@@ -15,7 +33,7 @@ impl Resolver {
 
     /// Adds a base directory for later calls to resolve.
     ///
-    /// The base directory is transformed into its canonical form.
+    /// The base directory is transformed into its canonical form (not resolved).
     /// If the canonicalized version is already present in the list of
     /// base paths `Ok(())` is returned without duplicating the entry.
     /// If not already present, is it added to the end, i.e. with the
@@ -32,8 +50,22 @@ impl Resolver {
     /// let mut resolver = Resolver::new();
     /// resolver.add_base(".");
     /// ```
-    pub fn add_base<P : AsRef<Path>>(&mut self, base: P) -> Result<(), Error> {
-        let base = base.as_ref().canonicalize()?;
+    pub fn add_base<P : AsRef<Path>>(&mut self, base: P) -> Result<(), ResolveError> {
+        let base = base.as_ref();
+
+        if base.as_os_str().is_empty() {
+            return Err(ResolveError::EmptyBasePath);
+        }
+
+        let base = match base.canonicalize() {
+            Ok(base) => base,
+            Err(io) => return Err(
+                ResolveError::InaccessibleBasePath {
+                    base_path: base.to_path_buf(),
+                    cause: io
+                }
+            )
+        };
 
         if !self.bases.contains(&base) {
             self.bases.push(base);
@@ -94,19 +126,11 @@ impl Resolver {
     ///     );
     /// }
     /// ```
-    pub fn resolve<P : AsRef<Path>>(&self, search_path: P) -> Result<PathBuf, Error> {
-        let mut search_path = search_path.as_ref();
+    pub fn resolve<P : AsRef<Path>>(&self, search_path_param: P) -> Result<PathBuf, ResolveError> {
+        let mut search_path = search_path_param.as_ref();
 
         if search_path.as_os_str().is_empty() {
-            return Err(
-                Error::new(
-                    ErrorKind::InvalidData,
-                    format!(
-                        "Empty search path in attempt to resolve in potential base paths {:?}",
-                        &self.bases
-                    )
-                )
-            )
+            return Err(ResolveError::EmptySearchPath);
         }
 
         // If search path is already absolute, first try to canonicalize it and
@@ -125,8 +149,10 @@ impl Resolver {
                 // This allows to use the bases as a sort of "pseudo-root".
                 Err(_) => {
                     // Drop the prefix component like / on unix or C:\ on Windows
+                    // Result is always Ok, otherwise canonicalization would have succeeded with
+                    // a root path
                     search_path = search_path.strip_prefix(
-                        search_path.iter().next().unwrap()
+                        search_path.iter().next().unwrap() // unwrap safe since is_empty() returned false
                     ).unwrap();
                 }
             }
@@ -143,14 +169,10 @@ impl Resolver {
         }
 
         Err(
-            Error::new(
-                ErrorKind::NotFound,
-                format!(
-                    "Search path {:?} could not be resolved using potential base paths {:?}",
-                    search_path,
-                    &self.bases
-                )
-            )
+            ResolveError::NotFound {
+                search_path: search_path_param.as_ref().to_path_buf(),
+                bases: self.bases.clone()
+            }
         )
     }
 }

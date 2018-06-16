@@ -1,6 +1,6 @@
 name: Rain
 description: Rain dropping from the sky
-mesh: tests/assets/sky.obj
+mesh: ../assets/sky.obj
 emission_count: 100000
 p_straight: 0.0
 p_parabolic: 0.3
