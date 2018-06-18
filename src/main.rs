@@ -4,7 +4,7 @@ extern crate aitios_sim as sim;
 extern crate aitios_surf as surf;
 extern crate aitios_scene as scene;
 extern crate aitios_tex as tex;
-extern crate clap;
+#[macro_use] extern crate clap;
 extern crate failure;
 #[macro_use]
 extern crate failure_derive;
@@ -22,16 +22,18 @@ mod spec;
 mod runner;
 mod files;
 
-use clap::{ArgMatches, Arg, App};
+use clap::{ArgMatches, Arg, App, Result as ClapResult};
 use chrono::prelude::*;
+use rayon::ThreadPoolBuilder;
 use spec::SimulationSpec;
+use runner::SimulationRunner;
 use std::fs::File;
 use std::path::Path;
-use std::io;
 use std::collections::HashSet;
+use std::default::Default;
 use std::process;
 use simplelog::{SharedLogger, CombinedLogger, TermLogger, WriteLogger, LevelFilter, Config};
-use failure::{Error, Fail};
+use failure::{Error, Fail, ResultExt, err_msg};
 
 fn main() {
     if let Err(err) = run() {
@@ -42,14 +44,14 @@ fn main() {
 }
 
 fn fail_for_humans(error: &Error) {
-    error!("Simulation could not be completed due to error: {}", error);
+    error!("Simulation could not be completed.\n{}", error);
     if let Some(cause) = error.cause().cause() {
         error!("Cause: {}", cause);
     }
 }
 
 fn fail_for_debugging(mut error: &Fail) {
-    debug!("Simulation could not be completed due to error: {:?}", error);
+    debug!("Simulation could not be completed.\n{:?}", error);
     while let Some(cause) = error.cause() {
         debug!("Cause: {:?}", cause);
         error = cause;
@@ -58,7 +60,7 @@ fn fail_for_debugging(mut error: &Fail) {
 
 fn run() -> Result<(), Error> {
     let matches = App::new("aitios")
-        .version("0.1")
+        .version(crate_version!())
         .author("krachzack <hello@phstadler.com>")
         .about("Procedural weathering simulation on the command line with aitios")
         .arg(
@@ -86,19 +88,65 @@ fn run() -> Result<(), Error> {
                 .value_name("LOG_FILE")
                 .help("Specifies a file in which to log simulation progress")
         )
-        .get_matches();
+        .arg(
+            Arg::with_name("threads")
+                .short("t")
+                .long("threads")
+                .takes_value(true)
+                .value_name("THREAD_COUNT")
+                .validator(validate_thread_count)
+                .help("Overrides thread pool size from number of virtual processors to the given thread count")
+        )
+        .get_matches_safe();
 
-    if let Err(err) = configure_logging(&matches) {
-        eprintln!("[ABORT] Failed to set up logging: {}", err);
-        return Err(err.into());
+    init_logging(&matches)?; // Before checking if parsing succeeded, set up logging
+    let matches = matches?; // Now, abort if parsing failed
+    init_thread_pool(&matches)?;
+    let mut runner = init_simulation_runner(&matches)?;
+
+    info!("Running…");
+    runner.run();
+    info!("Finished simulation, done.");
+
+    Ok(())
+}
+
+/// Initializes logging using the given argument matching result.
+///
+/// If matching failed, tries to set up terminal only logging and
+/// returns Ok(()) if successful, otherwise some Err value..
+///
+/// If matching was successful, tries to apply the logging config
+/// and returns Ok(()) if successful, otherwise some Err value.
+fn init_logging(matches: &ClapResult<ArgMatches>) -> Result<(), Error> {
+    let terminal_only_matches = Default::default();
+    let matches = matches.as_ref().unwrap_or(&terminal_only_matches);
+
+    configure_logging(matches)
+        // If config was erroneous, try again with default config
+        .or_else(|_| configure_logging(&terminal_only_matches))
+}
+
+fn init_thread_pool(matches: &ArgMatches) -> Result<(), Error> {
+    if let Some(thread_count) = matches.value_of("THREAD_COUNT") {
+        let thread_count = usize::from_str_radix(&thread_count, 10)
+            .unwrap(); // Can be unwrapped since validator checks this
+
+        ThreadPoolBuilder::new()
+            .num_threads(thread_count)
+            .build_global()
+            .context("Thread pool could not be set up with specified thread count.")?
     }
+    Ok(())
+}
 
+fn init_simulation_runner(matches: &ArgMatches) -> Result<SimulationRunner, Error> {
     let spec_file_path = matches.value_of("SIMULATION_SPEC_FILE")
-        .expect("No simulation spec file provided");
+        .unwrap(); // Can unwrap since is marked as required and parsing would have failed otherwise
 
     info!("Loading simulation described at \"{}\" and preparing data…", spec_file_path);
 
-    let mut runner = runner::load(spec_file_path)?;
+    let runner = runner::load(spec_file_path)?;
 
     info!("Simulation is ready.");
 
@@ -107,12 +155,7 @@ fn run() -> Result<(), Error> {
         info!("{}", line);
     }
 
-    info!("Running…");
-    runner.run();
-
-    info!("Finished simulation, done.");
-
-    Ok(())
+    Ok(runner)
 }
 
 fn validate_simulation_spec(simulation_spec_file: String) -> Result<(), String> {
@@ -133,7 +176,17 @@ fn validate_simulation_spec(simulation_spec_file: String) -> Result<(), String> 
     }
 }
 
-fn configure_logging(arg_matches: &ArgMatches) -> Result<(), io::Error> {
+fn validate_thread_count(thread_count: String) -> Result<(), String> {
+    usize::from_str_radix(&thread_count, 10)
+        .map(|_| ())
+        .map_err(|e| format!(
+            "Invalid thread count specified {count}\nCause: {cause}",
+            count = thread_count,
+            cause = e
+        ))
+}
+
+fn configure_logging(arg_matches: &ArgMatches) -> Result<(), Error> {
     // Nothing => warn, -v => Info, -vv => Debug
     let term_level_filter = match arg_matches.occurrences_of("verbose") {
         0 => LevelFilter::Warn,
@@ -142,7 +195,8 @@ fn configure_logging(arg_matches: &ArgMatches) -> Result<(), io::Error> {
     };
 
     let mut loggers : Vec<Box<SharedLogger>> = vec![
-        TermLogger::new(term_level_filter, Config::default()).unwrap()
+        TermLogger::new(term_level_filter, Config::default())
+            .ok_or(err_msg("Failed to set up logging to terminal."))?
     ];
 
     let log_files = arg_matches.values_of("log");
@@ -150,8 +204,8 @@ fn configure_logging(arg_matches: &ArgMatches) -> Result<(), io::Error> {
 
     if let Some(log_files) = log_files {
         // Fall back to synthesized filename with date if option was not provided with a value,
-        // e.g. aitios-cli sim.yml -l instead of
-        //      aitios-cli sim.yml -l LOGFILE.log
+        // e.g. "aitios-cli sim.yml -l" instead of
+        //      "aitios-cli sim.yml -l LOGFILE.log"
         // and make extra sure the log file names are unique before creating them
         let mut log_files : HashSet<_> = log_files.collect();
         if log_files.is_empty() {
@@ -160,7 +214,9 @@ fn configure_logging(arg_matches: &ArgMatches) -> Result<(), io::Error> {
 
         // Then try to create all files and push a logger
         for file in log_files.into_iter() {
-            let file = File::create(file)?;
+            let file = File::create(file)
+                .context("Failed to create log file.")?;
+
             loggers.push(
                 WriteLogger::new(LevelFilter::Debug, Config::default(), file)
             );
@@ -168,7 +224,7 @@ fn configure_logging(arg_matches: &ArgMatches) -> Result<(), io::Error> {
     }
 
     CombinedLogger::init(loggers)
-        .expect("Failed to set up combined logger");
+        .context("Failed to set up combined logger.")?;
 
     Ok(())
 }

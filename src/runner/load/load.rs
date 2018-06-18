@@ -83,7 +83,7 @@ pub fn load<P : Into<PathBuf>>(simulation_spec_file: P) -> Result<SimulationRunn
 }
 
 /// Precedence:
-/// 1. Both absolute and existing paths
+/// 1. Absolute paths that do also exist
 /// 2. Relative to directory that contains simulation spec
 /// 3. Current working directory, if different from 2.
 fn build_resolver(simulation_spec_path: &PathBuf) -> Result<Resolver, Error> {
