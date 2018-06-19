@@ -2,7 +2,7 @@ use asset::obj;
 use sim::Simulation;
 use scene::{Entity, MaterialBuilder};
 use spec::{EffectSpec, SimulationSpec, SurfelLookup, Blend};
-use tex::{Density, Rgba, GuidedBlend, Stop, DynamicImage, open, Pixel};
+use tex::{Density, Rgba, GuidedBlend, BlendType, Stop, DynamicImage, open, Pixel, combine_normals};
 use std::path::PathBuf;
 use std::fmt;
 use std::rc::Rc;
@@ -211,26 +211,29 @@ impl SimulationRunner {
             .for_each(|(idx, entity)| {
                 let mut mat = MaterialBuilder::from(&*entity.material);
 
-                if let Some(_normal) = normal { unimplemented!("No algorithm for blending normals implemented yet") }
+                if let Some(normal) = normal {
+                    let new_tex_path = self.perform_blend(entity, entity.material.normal_map(), normal, substance_idx, idx, surfel_lookup, island_bleed, BlendType::Normal);
+                    mat = mat.normal_map(new_tex_path);
+                }
 
                 if let Some(displacement) = displacement {
-                    let new_tex_path = self.perform_blend(entity, entity.material.displacement_map(), displacement, substance_idx, idx, surfel_lookup, island_bleed);
+                    let new_tex_path = self.perform_blend(entity, entity.material.displacement_map(), displacement, substance_idx, idx, surfel_lookup, island_bleed, BlendType::Linear);
                     mat = mat.displacement_map(new_tex_path);
                 }
 
                 if let Some(albedo) = albedo {
-                    let new_tex_path = self.perform_blend(entity, entity.material.diffuse_color_map(), albedo, substance_idx, idx, surfel_lookup, island_bleed);
+                    let new_tex_path = self.perform_blend(entity, entity.material.diffuse_color_map(), albedo, substance_idx, idx, surfel_lookup, island_bleed, BlendType::Linear);
                     mat = mat.diffuse_color_map(new_tex_path);
                 }
 
                 if let Some(metallicity) = metallicity {
-                    let new_tex_path = self.perform_blend(entity, entity.material.metallic_map(), metallicity, substance_idx, idx, surfel_lookup, island_bleed);
+                    let new_tex_path = self.perform_blend(entity, entity.material.metallic_map(), metallicity, substance_idx, idx, surfel_lookup, island_bleed, BlendType::Linear);
                     mat = mat.metallic_map(new_tex_path);
                 }
 
                 // REVIEW since mtl supports glossiness, maybe invert the roughness with a MTL filter
                 if let Some(roughness) = roughness {
-                    let new_tex_path = self.perform_blend(entity, entity.material.roughness_map(), roughness, substance_idx, idx, surfel_lookup, island_bleed);
+                    let new_tex_path = self.perform_blend(entity, entity.material.roughness_map(), roughness, substance_idx, idx, surfel_lookup, island_bleed, BlendType::Linear);
                     mat = mat.roughness_map(new_tex_path);
                 }
 
@@ -239,7 +242,17 @@ impl SimulationRunner {
 
     }
 
-    fn perform_blend(&self, entity: &Entity, original_map: Option<&PathBuf>, blend: &Blend, substance_idx: usize, entity_idx: usize, surfel_lookup: SurfelLookup, island_bleed: usize) -> PathBuf {
+    fn perform_blend(&self,
+        entity: &Entity,
+        original_map: Option<&PathBuf>,
+        blend: &Blend,
+        substance_idx: usize,
+        entity_idx: usize,
+        surfel_lookup: SurfelLookup,
+        island_bleed: usize,
+        blend_type: BlendType
+    ) -> PathBuf
+    {
         let (width, height) = blend_output_size(
             blend,
             original_map
@@ -268,7 +281,7 @@ impl SimulationRunner {
             table
         );
 
-        let guided_blend = Self::make_guided_blend(blend, original_map);
+        let guided_blend = Self::make_guided_blend(blend, blend_type, original_map);
         let mut blend_result_tex = guided_blend.perform(&guide);
 
         // If original map is specified, blend the synthesized
@@ -283,17 +296,27 @@ impl SimulationRunner {
                 "When original map is present, result of layer blend should have same dimensions"
             );
 
-            blend_result_tex.pixels_mut()
-                .zip(original_map.pixels())
-                .for_each(|(top, (_, _, bottom))| {
-                    let mut bottom = bottom.clone();
-                    // Reduce alpha of top according to influence
-                    if blend.influence != 1.0 {
-                        top.apply_with_alpha(|c| c, |a| (((a as f32) * blend.influence) as u8));
-                    }
-                    bottom.blend(top);
-                    *top = bottom;
-                });
+            match blend_type {
+                // For normals, add blended map to base map as detail normal map
+                BlendType::Normal => blend_result_tex.pixels_mut()
+                    .zip(original_map.pixels())
+                    .for_each(|(top, (_, _, bottom))| {
+                        // TODO implement influence (maybe rotate top towards base?)
+                        *top = combine_normals(bottom, *top);
+                    }),
+                // For albedo, roughness, etc modulate alpha with influence and blend over original
+                BlendType::Linear => blend_result_tex.pixels_mut()
+                    .zip(original_map.pixels())
+                    .for_each(|(top, (_, _, bottom))| {
+                        let mut bottom = bottom.clone();
+                        // Reduce alpha of top according to influence
+                        if blend.influence != 1.0 {
+                            top.apply_with_alpha(|c| c, |a| (((a as f32) * blend.influence) as u8));
+                        }
+                        bottom.blend(top);
+                        *top = bottom;
+                    })
+            }
         }
 
         let tex_filename = blend.tex_pattern
@@ -315,7 +338,7 @@ impl SimulationRunner {
         PathBuf::from(tex_filename)
     }
 
-    fn make_guided_blend(blend: &Blend, original_map: Option<&PathBuf>) -> GuidedBlend<DynamicImage> {
+    fn make_guided_blend(blend: &Blend, blend_type: BlendType, original_map: Option<&PathBuf>) -> GuidedBlend<DynamicImage> {
         let mut stops = Vec::with_capacity(blend.stops.len() + 1);
 
         // Add implicit 0.0 stop with original texture, if present
@@ -341,7 +364,7 @@ impl SimulationRunner {
             )
         }
 
-        GuidedBlend::new(stops.into_iter())
+        GuidedBlend::with_type(stops.into_iter(), blend_type)
     }
 
     fn export_scene<'a, E>(&'a self, entities: E, obj_pattern: &Option<String>, mtl_pattern: &Option<String>, substance: &str)
