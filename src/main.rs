@@ -5,6 +5,7 @@ extern crate aitios_surf as surf;
 extern crate aitios_scene as scene;
 extern crate aitios_tex as tex;
 #[macro_use] extern crate clap;
+#[macro_use]
 extern crate failure;
 #[macro_use]
 extern crate failure_derive;
@@ -25,10 +26,8 @@ mod files;
 use clap::{ArgMatches, Arg, App, Result as ClapResult};
 use chrono::prelude::*;
 use rayon::ThreadPoolBuilder;
-use spec::SimulationSpec;
 use runner::SimulationRunner;
 use std::fs::File;
-use std::path::Path;
 use std::collections::HashSet;
 use std::default::Default;
 use std::process;
@@ -44,16 +43,17 @@ fn main() {
 }
 
 fn fail_for_humans(error: &Error) {
-    error!("Simulation could not be completed.\n{}", error);
+    eprintln!("error: {}", error);
     if let Some(cause) = error.cause().cause() {
-        error!("Cause: {}", cause);
+        eprintln!("> cause: {}", cause);
     }
 }
 
 fn fail_for_debugging(mut error: &Fail) {
-    debug!("Simulation could not be completed.\n{:?}", error);
+    debug!("Printing debug information about the error before exiting:");
+    debug!("error: {:?}", error);
     while let Some(cause) = error.cause() {
-        debug!("Cause: {:?}", cause);
+        debug!("> cause: {:?}", cause);
         error = cause;
     }
 }
@@ -146,7 +146,8 @@ fn init_simulation_runner(matches: &ArgMatches) -> Result<SimulationRunner, Erro
 
     info!("Loading simulation described at \"{}\" and preparing data…", spec_file_path);
 
-    let runner = runner::load(spec_file_path)?;
+    let runner = runner::load(spec_file_path)
+        .context(format!("Simulation specification could not be loaded at {}", spec_file_path))?;
 
     info!("Simulation is ready.");
 
@@ -159,21 +160,11 @@ fn init_simulation_runner(matches: &ArgMatches) -> Result<SimulationRunner, Erro
 }
 
 fn validate_simulation_spec(simulation_spec_file: String) -> Result<(), String> {
-    if Path::new(&simulation_spec_file).is_file() {
-        let mut file = match File::open(simulation_spec_file) {
-            Ok(file) => file,
-            Err(err) => return Err(format!("Simulation spec could not be opened: {}", err))
-        };
-
-        // TODO more validation and sanity checks
-        let spec : Result<SimulationSpec, _> = serde_yaml::from_reader(&mut file);
-        match spec {
-            Ok(_) => Ok(()),
-            Err(err) => Err(format!("Simulation spec could not be parsed: {}", err))
-        }
-    } else {
-        Err(format!("Spec file was specified but did not exist at: {}", simulation_spec_file))
+    if simulation_spec_file.is_empty() {
+        return Err("Specified simulation spec file path is empty".into());
     }
+
+    Ok(())
 }
 
 fn validate_thread_count(thread_count: String) -> Result<(), String> {

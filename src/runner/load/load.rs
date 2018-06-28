@@ -19,8 +19,12 @@ use runner::load::err::LoadError;
 pub fn load<P : Into<PathBuf>>(simulation_spec_file: P) -> Result<SimulationRunner, Error> {
     let simulation_spec_path = simulation_spec_file.into();
 
+    if !simulation_spec_path.exists() {
+        return Err(format_err!("Simulaction spec does not exist"));
+    }
+
     let mut simulation_spec_file = File::open(&simulation_spec_path)
-            .context("Test simulation spec could not be opened.")?;
+        .context("Simulation spec could not be opened.")?;
 
     let resolver = build_resolver(&simulation_spec_path)?;
 
