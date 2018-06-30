@@ -23,7 +23,13 @@ mod spec;
 mod runner;
 mod files;
 
-use clap::{ArgMatches, Arg, App, Result as ClapResult, ErrorKind as ClapErrorKind};
+use clap::{
+    ArgMatches,
+    Arg,
+    App,
+    Result as ClapResult,
+    ErrorKind as ClapErrorKind
+};
 use chrono::prelude::*;
 use rayon::ThreadPoolBuilder;
 use runner::SimulationRunner;
@@ -31,7 +37,14 @@ use std::fs::File;
 use std::collections::HashSet;
 use std::default::Default;
 use std::process;
-use simplelog::{SharedLogger, CombinedLogger, TermLogger, WriteLogger, LevelFilter, Config};
+use simplelog::{
+    SharedLogger,
+    CombinedLogger,
+    TermLogger,
+    WriteLogger,
+    LevelFilter,
+    Config
+};
 use failure::{Error, Fail, ResultExt, err_msg};
 use log::Level::Debug;
 
@@ -46,24 +59,40 @@ fn exit_with_error(error: Error) -> ! {
     if log_enabled!(Debug) {
         fail_for_debugging(error.cause());
     } else {
-        fail_for_humans(error.cause());
+        fail_for_humans(error);
     }
-    
     process::exit(1)
 }
 
-fn fail_for_humans(mut error: &Fail) {
-    eprintln!("fatal: {}", error);
-    // print causes up to depth 5
-    let mut cause_depth_range = 1..=5;
-    while let Some(cause) = error.cause() {
-        match cause_depth_range.next() {
-            Some(depth) => {
-                eprintln!("cause {}: {}", depth, cause);
-                error = cause;
-            },
-            None => break
-        }
+fn fail_for_humans(error: Error) {
+    eprintln!("{}", summarize_error(error));
+}
+
+fn summarize_error(error: Error) -> String {
+    let mut causes = error.causes();
+
+    // Error struct guarantees at least one top-level cause.
+    let top_level_cause = causes.next().unwrap();
+    let summary = format!("fatal: {}", top_level_cause);
+
+    match top_level_cause.cause() {
+        // No second cause, done.
+        None => summary,
+        // If second cause is root cause, don't bother
+        // enumerating the cause levels.
+        Some(cause) if cause.cause().is_none() =>
+            format!("{}\ncause: {}", summary, cause),
+        // But do so if more than one cause level.
+        Some(_) => (1..).zip(causes)
+            .fold(
+                summary,
+                |acc, (idx, cause)| format!(
+                    "{acc}\ncause {level}: {msg}",
+                    acc = acc,
+                    level = idx,
+                    msg = cause
+                )
+            )
     }
 }
 
