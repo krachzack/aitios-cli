@@ -23,7 +23,7 @@ mod spec;
 mod runner;
 mod files;
 
-use clap::{ArgMatches, Arg, App, Result as ClapResult};
+use clap::{ArgMatches, Arg, App, Result as ClapResult, ErrorKind as ClapErrorKind};
 use chrono::prelude::*;
 use rayon::ThreadPoolBuilder;
 use runner::SimulationRunner;
@@ -33,25 +33,43 @@ use std::default::Default;
 use std::process;
 use simplelog::{SharedLogger, CombinedLogger, TermLogger, WriteLogger, LevelFilter, Config};
 use failure::{Error, Fail, ResultExt, err_msg};
+use log::Level::Debug;
 
 fn main() {
     if let Err(err) = run() {
-        fail_for_humans(&err);
-        fail_for_debugging(err.cause());
-        process::exit(1);
+        exit_with_error(err);
     }
 }
 
-fn fail_for_humans(error: &Error) {
-    eprintln!("error: {}", error);
-    if let Some(cause) = error.cause().cause() {
-        eprintln!("> cause: {}", cause);
+/// Prints error messages and exits with a non-zero exit code.
+fn exit_with_error(error: Error) -> ! {
+    if log_enabled!(Debug) {
+        fail_for_debugging(error.cause());
+    } else {
+        fail_for_humans(error.cause());
+    }
+    
+    process::exit(1)
+}
+
+fn fail_for_humans(mut error: &Fail) {
+    eprintln!("fatal: {}", error);
+    // print causes up to depth 5
+    let mut cause_depth_range = 1..=5;
+    while let Some(cause) = error.cause() {
+        match cause_depth_range.next() {
+            Some(depth) => {
+                eprintln!("cause {}: {}", depth, cause);
+                error = cause;
+            },
+            None => break
+        }
     }
 }
 
 fn fail_for_debugging(mut error: &Fail) {
-    debug!("Printing debug information about the error before exiting:");
-    debug!("error: {:?}", error);
+    debug!("Printing debug information about the error before exiting.");
+    debug!("fatal: {:?}", error);
     while let Some(cause) = error.cause() {
         debug!("> cause: {:?}", cause);
         error = cause;
@@ -99,16 +117,38 @@ fn run() -> Result<(), Error> {
         )
         .get_matches_safe();
 
-    init_logging(&matches)?; // Before checking if parsing succeeded, set up logging
-    let matches = matches?; // Now, abort if parsing failed
-    init_thread_pool(&matches)?;
-    let mut runner = init_simulation_runner(&matches)?;
 
-    info!("Running…");
-    runner.run();
-    info!("Finished simulation, done.");
+    // Before checking if parsing succeeded, set up logging, falling back to a
+    // default logging solution, if parsing failed.
+    init_logging(&matches)?;
 
-    Ok(())
+    match matches {
+        // Parsing succeeded, unwrap the result and start loading and running simulation.
+        Ok(matches) => {
+            init_thread_pool(&matches)?;
+            let mut runner = init_simulation_runner(&matches)?;
+
+            info!("Running…");
+            runner.run();
+            info!("Finished simulation, done.");
+
+            Ok(())
+        },
+        // Parsing either failed or the user just wanted help or version information
+        Err(matches_error) => match matches_error.kind {
+            // Those are in many cases not really errors but the user just did not want to run
+            // anything right now. Exit the application successfully in these cases.
+            // If use_stderr is not false, there were probably some subcommands missing and this
+            // is in fact a real error that warrants unsuccessful exit.
+            ClapErrorKind::HelpDisplayed | ClapErrorKind::VersionDisplayed if !matches_error.use_stderr() => {  
+                println!("{}", matches_error.message);
+                Ok(())
+            },
+            // In all other cases, there was some sort of real error,
+            // exit unsuccessfully in these cases.
+            _ => Err(From::from(matches_error))
+        }
+    }
 }
 
 /// Initializes logging using the given argument matching result.
