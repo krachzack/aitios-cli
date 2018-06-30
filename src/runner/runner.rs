@@ -58,10 +58,14 @@ impl SimulationRunner {
     }
 
     fn perform_iteration(&mut self) {
+        info!("Iteration {} started...", self.iteration);
+
         // Perform tracing and substance transport
+        info!("Tracing...");
         self.sim.run();
 
         // NOTE surfel table cache invalidation necessary if geometry was changed
+        info!("Texture synthesis...");
         self.perform_effects();
     }
 
