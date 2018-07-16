@@ -17,6 +17,6 @@ serde_yaml = "0.7"
 aitios-geom = { git = "https://github.com/krachzack/aitios-geom.git" }
 aitios-asset = { git = "https://github.com/krachzack/aitios-asset.git" }
 aitios-scene = { git = "https://github.com/krachzack/aitios-scene.git" }
-aitios-sim = { git = "https://github.com/krachzack/aitios-sim.git", features = [ "debug_tracing" ] }
+aitios-sim = { git = "https://github.com/krachzack/aitios-sim.git" }
 aitios-surf = { git = "https://github.com/krachzack/aitios-surf.git" }
 aitios-tex = { git = "https://github.com/krachzack/aitios-tex.git" }

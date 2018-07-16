@@ -34,6 +34,7 @@ use chrono::prelude::*;
 use rayon::ThreadPoolBuilder;
 use runner::SimulationRunner;
 use std::fs::File;
+use std::path::{Path, PathBuf};
 use std::collections::HashSet;
 use std::default::Default;
 use std::process;
@@ -260,16 +261,21 @@ fn configure_logging(arg_matches: &ArgMatches) -> Result<(), Error> {
     ];
 
     let log_files = arg_matches.values_of("log");
-    let fallback_log_filename = &synthesize_datetime_log_filename();
 
     if let Some(log_files) = log_files {
         // Fall back to synthesized filename with date if option was not provided with a value,
         // e.g. "aitios-cli sim.yml -l" instead of
         //      "aitios-cli sim.yml -l LOGFILE.log"
         // and make extra sure the log file names are unique before creating them
-        let mut log_files : HashSet<_> = log_files.collect();
+        let log_files : Result<HashSet<_>, Error> = log_files
+            .map(log_arg_to_log_path)
+            .collect();
+        let mut log_files = log_files?;
+        
         if log_files.is_empty() {
-            log_files.insert(fallback_log_filename);
+            // If logging argument found but no paths specified, use a
+            // default filename as fallback
+            log_files.insert(PathBuf::from(synthesize_datetime_log_filename()));
         }
 
         // Then try to create all files and push a logger
@@ -287,6 +293,31 @@ fn configure_logging(arg_matches: &ArgMatches) -> Result<(), Error> {
         .context("Failed to set up combined logger.")?;
 
     Ok(())
+}
+
+fn log_arg_to_log_path(arg: &str) -> Result<PathBuf, Error> {
+    let path : &Path = arg.as_ref();
+    if path.is_dir() {
+        // If directory given, append default log filename
+        let mut path = PathBuf::from(path);
+        path.push(synthesize_datetime_log_filename());
+        Ok(path)
+    } else if path.is_file() {
+        // Existing, regular file, overwrite it
+        Ok(path.to_owned())
+    } else {
+        match path.parent() {
+            Some(parent) if parent.as_os_str().is_empty() ||  parent.is_dir() =>
+                // Relative one-level path returns Ok(""), just create the file,
+                // since . is the implicit parent and always exists.
+                // If immediate parent is an existing directory other than "",
+                // also create the file.
+                Ok(path.to_owned()),
+                // Either parent dir does not exist or the path is invalid,
+                // return error
+            _ => Err(format_err!("Log file path \"{}\" cannot be resolved", arg))
+        }
+    }
 }
 
 /// Synthesize a default filename if -l or --log is passed without an actual filename.
