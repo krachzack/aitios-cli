@@ -8,6 +8,7 @@ pub struct SimulationSpec {
     pub description: String,
     pub scene: PathBuf,
     pub iterations: usize,
+    pub log: Option<PathBuf>,
     #[serde(default = "default_surfel_distance")]
     pub surfel_distance: f32,
     pub sources: Vec<PathBuf>,

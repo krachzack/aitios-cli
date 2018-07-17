@@ -20,7 +20,7 @@ pub fn load<P : Into<PathBuf>>(simulation_spec_file: P) -> Result<SimulationRunn
     let simulation_spec_path = simulation_spec_file.into();
 
     if !simulation_spec_path.exists() {
-        return Err(format_err!("Simulaction spec does not exist"));
+        return Err(format_err!("Simulation spec does not exist"));
     }
 
     let mut simulation_spec_file = File::open(&simulation_spec_path)
@@ -83,7 +83,8 @@ pub fn load<P : Into<PathBuf>>(simulation_spec_file: P) -> Result<SimulationRunn
         Simulation::new(sources, all_triangles, surface, vec![])
     };
 
-    Ok(SimulationRunner::new(spec, unique_substance_names, simulation, entities))
+    let runner = SimulationRunner::new(spec, unique_substance_names, simulation, entities);
+    Ok(runner)
 }
 
 /// Precedence:

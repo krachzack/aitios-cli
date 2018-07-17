@@ -7,7 +7,7 @@ pub enum ResolveError {
     EmptyBasePath,
     #[fail(display = "Tried to resolve a search path with a resolver but the given path was empty.")]
     EmptySearchPath,
-    #[fail(display = "Tried to resolve a search path with a resolver but the given path was empty.")]
+    #[fail(display = "Attempt to add a base path {:?} failed. Cannot transform it to a canonical form. Possibly encountered non-existent path component or access rights were insufficient to canonicalize.", base_path)]
     InaccessibleBasePath {
         base_path: PathBuf,
         #[cause] cause: io::Error
@@ -75,9 +75,19 @@ impl Resolver {
     }
 
     /// Looks up the given search path in a list of base paths and
-    /// returns an absolute, canonicalized path, that is, all
-    /// intermediary directories and the final path component exist,
-    /// all symlinks including `.` and `..` are aresolved.
+    /// returns an absolute, canonicalized path to the referenced
+    /// file or directory.
+    ///
+    /// The returned path that the given search path has been resolved
+    /// to guarantees at least the following requirements:
+    /// * it is absolute, i.e. it starts with a root component ("/" in unices, "C:\" or something like that in Windows),
+    /// * all intermediary directories and the final path component exist,
+    /// * all symlinks including `.` and `..` have been replaced with the link target.
+    ///
+    /// These properties make the returned path unique and independent of
+    /// the current working directory in most circumstances. Notable, but rare
+    /// exceptions are hardlinks or bind mounts, which would allow multiple
+    /// resolved paths point to the same entity.
     ///
     /// If search path is already absolute, checks if it exists first.
     /// If it does exist, it is returned in its canonicalized form,
@@ -88,7 +98,7 @@ impl Resolver {
     /// searched for within each added base path, in the order they were
     /// added. The first existing file or directory is returned.
     ///
-    /// If no base path contains the given search path, returns a not found
+    /// If no base path contains the given search path, returns a `NotFound`
     /// error.
     ///
     /// # Examples

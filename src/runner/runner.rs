@@ -44,6 +44,14 @@ impl SimulationRunner {
         }
     }
 
+    pub fn creation_time(&self) -> DateTime<Local> {
+        self.creation_time
+    }
+
+    pub fn spec(&self) -> &SimulationSpec {
+        &self.spec
+    }
+
     pub fn run(&mut self) {
         // Iteration 0 only performs effects, no tracing is performed.
         // Useful as a reference for iteration 1
