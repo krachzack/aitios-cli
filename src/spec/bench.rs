@@ -2,5 +2,7 @@ use std::path::PathBuf;
 
 #[derive(Debug, Deserialize)]
 pub struct BenchSpec {
-    pub iterations: Option<PathBuf>
+    pub iterations: Option<PathBuf>,
+    pub tracing: Option<PathBuf>,
+    pub synthesis: Option<PathBuf>
 }
