@@ -1,18 +1,19 @@
 use asset::obj;
 use sim::Simulation;
 use scene::{Entity, MaterialBuilder};
-use spec::{EffectSpec, SimulationSpec, SurfelLookup, Blend};
+use spec::{EffectSpec, SimulationSpec, SurfelLookup, Blend, BenchSpec};
 use tex::{Density, Rgba, GuidedBlend, BlendType, Stop, DynamicImage, open, Pixel, combine_normals};
 use std::path::PathBuf;
 use std::fmt;
 use std::rc::Rc;
 use chrono::prelude::*;
-use files::create_file_recursively;
+use files::{create_file_recursively, fs_timestamp};
 use runner::surfel_table_cache::SurfelTableCache;
 use surf;
 use tex::{self, GenericImage};
 use geom::Vertex;
 use sim::SurfelData;
+use bencher::Bencher;
 
 type Surface = surf::Surface<surf::Surfel<Vertex, SurfelData>>;
 
@@ -24,7 +25,8 @@ pub struct SimulationRunner {
     iteration: u64,
     unique_substance_names: Vec<String>,
     entities: Vec<Entity>,
-    surfel_tables: SurfelTableCache
+    surfel_tables: SurfelTableCache,
+    iteration_benchmark: Option<Bencher>
 }
 
 impl SimulationRunner {
@@ -33,6 +35,8 @@ impl SimulationRunner {
 
         let surfel_tables = build_surfel_tables(&spec.effects, &entities, sim.surface());
 
+        let iteration_benchmark = build_iteration_benchmark(&spec.benchmark, creation_time);
+
         Self {
             spec,
             sim,
@@ -40,7 +44,8 @@ impl SimulationRunner {
             iteration: 0,
             unique_substance_names,
             entities,
-            surfel_tables
+            surfel_tables,
+            iteration_benchmark
         }
     }
 
@@ -59,6 +64,12 @@ impl SimulationRunner {
         self.perform_effects();
 
         for _ in 0..self.spec.iterations {
+            // Write timings of iterations to CSV benchmarks if required
+            // by simulation spec.
+            let _bench = self.iteration_benchmark
+                .as_ref()
+                .map(|b| b.bench());
+
             // iteration 1 is the first iteration with actual gammaton simulation before effects
             self.iteration += 1;
             self.perform_iteration();
@@ -170,7 +181,7 @@ impl SimulationRunner {
                         .replace("{id}", &format!("{}", ent_idx))
                         .replace("{entity}", &ent.name)
                         .replace("{substance}", substance_name)
-                        .replace("{datetime}", &self.creation_time.to_rfc3339().replace(":", "_"));
+                        .replace("{datetime}", &fs_timestamp(self.creation_time));
 
                     let mut fout = create_file_recursively(&tex_filename)
                         .expect("Could not create image file for density effect.");
@@ -336,7 +347,7 @@ impl SimulationRunner {
             .replace("{id}", &format!("{}", entity_idx))
             .replace("{entity}", &entity.name)
             .replace("{substance}", &self.unique_substance_names[substance_idx])
-            .replace("{datetime}", &self.creation_time.to_rfc3339().replace(":", "_"));
+            .replace("{datetime}", &fs_timestamp(self.creation_time));
 
         let mut tex_file = create_file_recursively(&tex_filename)
             .expect("Could not create texture file for blending effect");
@@ -382,8 +393,7 @@ impl SimulationRunner {
     fn export_scene<'a, E>(&'a self, entities: E, obj_pattern: &Option<String>, mtl_pattern: &Option<String>, substance: &str)
         where E : IntoIterator<Item = &'a Entity>
     {
-        let datetime = &self.creation_time.to_rfc3339()
-                .replace(":", "_");
+        let datetime = &fs_timestamp(self.creation_time);
 
         // TODO handle deduplication of material names,
         // e.g. group by name and then make every multiply used name unique if values differ
@@ -414,8 +424,7 @@ impl SimulationRunner {
     }
 
     fn export_surfels(&self, surfel_obj_pattern: &str) {
-        let datetime = &self.creation_time.to_rfc3339()
-                .replace(":", "_");
+        let datetime = &fs_timestamp(self.creation_time);
 
         let surfel_obj_path = surfel_obj_pattern.replace("{iteration}", &format!("{}", self.iteration))
             .replace("{datetime}", datetime);
@@ -432,6 +441,24 @@ impl SimulationRunner {
 // Underscore material is catchall as always, empty array also means admit all materials
 fn is_entity_applicable_for_materials(entity: &Entity, materials: &Vec<String>) -> bool {
     materials.is_empty() || materials.iter().any(|m| m == "_" || m == entity.material.name())
+}
+
+fn build_iteration_benchmark(benchmark: &Option<BenchSpec>, creation_time: DateTime<Local>) -> Option<Bencher> {
+    benchmark.as_ref()
+        .and_then(|b|
+            b.iterations.as_ref()
+                .and_then(|csv| {
+                    let csv = csv.to_str()
+                        .unwrap()
+                        .replace("{datetime}", &fs_timestamp(creation_time));
+
+                    Some(create_file_recursively(csv)
+                        .expect("Failed to create benchmark file"))
+                })
+                .and_then(|csv| Some(
+                    Bencher::new(csv)
+                ))
+        )
 }
 
 fn build_surfel_tables(effects: &Vec<EffectSpec>, entities: &Vec<Entity>, surface: &Surface) -> SurfelTableCache {

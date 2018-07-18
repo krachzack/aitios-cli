@@ -1,5 +1,4 @@
 use std::io::Write;
-use std::time::Duration;
 use std::thread::{spawn, JoinHandle};
 use std::sync::mpsc::{channel, Receiver, Sender};
 use super::Benchmark;

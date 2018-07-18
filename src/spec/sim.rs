@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
-use spec::EffectSpec;
+use spec::{EffectSpec, BenchSpec};
 
 #[derive(Debug, Deserialize)]
 pub struct SimulationSpec {
@@ -13,7 +13,8 @@ pub struct SimulationSpec {
     pub surfel_distance: f32,
     pub sources: Vec<PathBuf>,
     pub surfels_by_material: HashMap<String, String>,
-    pub effects: Vec<EffectSpec>
+    pub effects: Vec<EffectSpec>,
+    pub benchmark: Option<BenchSpec>
 }
 
 fn default_surfel_distance() -> f32 {
