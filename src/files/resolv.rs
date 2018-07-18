@@ -19,9 +19,8 @@ pub enum ResolveError {
     }
 }
 
-/// Resolves relative and absolute filenames using a list
-/// of base paths that the filenames for lookup can be
-/// relative to.
+/// Resolves existing relative and absolute filenames for using a list
+/// of base paths that the filenames for lookup can be relative to.
 pub struct Resolver {
     bases: Vec<PathBuf>
 }

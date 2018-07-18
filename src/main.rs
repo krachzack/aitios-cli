@@ -19,6 +19,7 @@ extern crate rayon;
 extern crate log;
 extern crate simplelog;
 
+mod bencher;
 mod spec;
 mod runner;
 mod files;
