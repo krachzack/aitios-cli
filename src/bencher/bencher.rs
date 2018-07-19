@@ -69,11 +69,14 @@ fn persist_benchmarks<W>(rx: Receiver<Msg>, mut sink: W)
     where W : Write
 {
     while let Ok(Msg::Persist(duration)) = rx.recv() {
-        let sec = duration.as_secs();
-        let subsec = duration.subsec_nanos();
+        let secs = duration.as_secs();
+        let nanos = duration.subsec_nanos();
+
+        // Pad nanos with zeros to nine digits to make
+        // a number in seconds out of it.
         writeln!(
             sink,
-            "{};{}", sec, subsec
+            "{}.{:09}", secs, nanos
         ).expect("Could not write to benchmark sink.");
     }
 }
@@ -85,6 +88,7 @@ mod test {
     use std::path::Path;
     use std::fs::{File, remove_file};
     use std::thread::sleep;
+    use std::time::Duration;
 
     #[test]
     fn persistence() {
@@ -125,7 +129,7 @@ mod test {
 
         let mut benchmarks_ms = benchmark_output.lines()
             // Extract second column (subsecond part in nanoseconds)
-            .map(|l| l.split(';')
+            .map(|l| l.split('.')
                 .map(str::parse::<u64>)
                 .collect::<Result<Vec<u64>, _>>()
                 .expect("Benchmarker output could not be parsed as semicolon-separated unsigned numbers")
