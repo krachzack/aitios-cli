@@ -96,16 +96,18 @@ impl SimulationRunner {
 
         // NOTE surfel table cache invalidation necessary if geometry was changed
         {
-            let _synthesis_bench = self.synthesis_benchmark
-                .as_ref()
-                .map(|b| b.bench());
-
             info!("Texture synthesis...");
             self.perform_effects();
         }
     }
 
     fn perform_effects(&self) {
+        // NOTE this will run for iteration 0, so there will be one benchmark more for
+        //      synthesis when compared to tracing
+        let _synthesis_bench = self.synthesis_benchmark
+            .as_ref()
+            .map(|b| b.bench());
+
         // Make a fresh copy of the scene to run the effects on for each effect run.
         // With this technique, effects can accumulate throughout one iteration,
         // but each iteration will start with a fresh copy of the scene.
