@@ -356,6 +356,8 @@ impl SimulationRunner {
                         bottom.blend(top);
                         *top = bottom;
                     })
+                // TODO maybe displacement needs some special treatment so the baseline is at 0.5
+                //      displacement and normals should maybe also be mutually exclusive
             }
         }
 
@@ -368,8 +370,6 @@ impl SimulationRunner {
 
         let mut tex_file = create_file_recursively(&tex_filename)
             .expect("Could not create texture file for blending effect");
-
-        // FIXME influence needs to come into play now
 
         tex::ImageRgba8(blend_result_tex)
             .write_to(&mut tex_file, tex::PNG)
@@ -623,18 +623,23 @@ fn build_surfel_tables(effects: &Vec<EffectSpec>, entities: &Vec<Entity>, surfac
 }
 
 fn blend_output_size(blend: &Blend, original_tex_path: Option<&PathBuf>) -> (u32, u32) {
-    original_tex_path
-        // Let diffuse color texture map determine surfel table resolution
-        .map(|p| tex::open(p).expect(&format!("Texture of entity could not be loaded {:?}", p)))
-        // If undefined, pick largest blending stop
-        .or_else(|| blend.stops
-            .iter()
-            .filter_map(|s| s.sample.as_ref())
-            .map(|p| tex::open(p).expect(&format!("Blend sample texture could not be loaded {:?}", p)))
-            .max_by_key(|i| i.dimensions())
-        )
-        .map(|i| i.dimensions())
-        .expect("Cannot determine surfel table size for layer effect. Neither the material nor any blend stop define a loadable texture that could be used to derive a size.")
+    match (blend.width, blend.height) {
+        (Some(w), Some(h)) => (w as u32, h as u32),
+        (Some(w), None) => (w as u32, w as u32),
+        (None, Some(h)) => (h as u32, h as u32),
+        (None, None) => original_tex_path
+            // Let diffuse color texture map determine surfel table resolution
+            .map(|p| tex::open(p).expect(&format!("Texture of entity could not be loaded {:?}", p)))
+            // If undefined, pick largest blending stop
+            .or_else(|| blend.stops
+                .iter()
+                .filter_map(|s| s.sample.as_ref())
+                .map(|p| tex::open(p).expect(&format!("Blend sample texture could not be loaded {:?}", p)))
+                .max_by_key(|i| i.dimensions())
+            )
+            .map(|i| i.dimensions())
+            .expect("Cannot determine surfel table size for layer effect in absence of preferred blend output size. Neither the material nor any blend stop define a loadable texture that could be used to derive a fallback size.")
+    }
 }
 
 impl fmt::Display for SimulationRunner {

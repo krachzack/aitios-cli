@@ -32,12 +32,12 @@ pub enum EffectSpec {
     /// roughness. Each use a specialiced blending technique and are specified
     /// with the path to a sample texture and an influence factor.
     ///
-    /// Width and height of the output textures are equal to the sizes of the
-    /// original textures. If an applicable material does not define an original
-    /// texture for a map, the map stop with the largest substance sample texture
-    /// size defines the output texture size.
+    /// Width and height of the output textures will be:
+    /// 1. The defined width, height, or both beside the blend stops (highest precedence),
+    /// 2. if unspecified, dimensions of the original map in the base material,
+    /// 3. if no original map defined in entity material, use the dimensions of the largest sample texture.
     ///
-    /// Multiple blend effects are allowed and will be applied in declaration order.
+    /// Multiple layer effects are allowed and will be applied in declaration order.
     #[serde(rename="layer")]
     Layer {
         /// A list of material names where on each entity that uses it, a new material will be derived to replace it.
@@ -63,6 +63,18 @@ pub enum EffectSpec {
 
 #[derive(Debug, Deserialize, Clone)]
 pub struct Blend {
+    /// If specified, use this output texture width instead
+    /// of the width of the original map from the material or
+    /// the largest blendstop.
+    ///
+    /// If used without height, uses the same value for height.
+    pub width: Option<usize>,
+    /// If specified, use this output texture height instead
+    /// of the height of the original map from the material or
+    /// the largest blendstop.
+    ///
+    /// If used without width, uses the same value for width.
+    pub height: Option<usize>,
     /// Texture samples at specified concentrations. Unless explicitly specified, cenith
     /// 0.0 is populated automatically with the original texture if left unspecified.
     /// If no stop is specified, the implicit stop at 0.0 will trigger the use of the
