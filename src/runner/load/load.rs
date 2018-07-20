@@ -14,7 +14,7 @@ use std::cmp::Eq;
 use std::hash::Hash;
 use std::env::current_dir;
 use serde_yaml;
-use files::{Resolver, fs_timestamp};
+use files::{Resolver, fs_timestamp, create_file_recursively};
 use failure::{Error, ResultExt};
 use runner::load::err::LoadError;
 
@@ -94,7 +94,7 @@ pub fn load<P : Into<PathBuf>>(simulation_spec_file: P) -> Result<SimulationRunn
         let secs = elapsed.as_secs();
         let nanos = elapsed.subsec_nanos();
 
-        let mut setup_csv = File::open(
+        let mut setup_csv = create_file_recursively(
             setup_csv.to_str()
                 .unwrap()
                 .replace("{datetime}", &fs_timestamp(runner.creation_time()))

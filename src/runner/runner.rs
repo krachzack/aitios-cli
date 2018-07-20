@@ -2,7 +2,7 @@ use asset::obj;
 use sim::Simulation;
 use scene::{Entity, MaterialBuilder};
 use spec::{EffectSpec, SimulationSpec, SurfelLookup, Blend, BenchSpec};
-use tex::{Density, Rgba, GuidedBlend, BlendType, Stop, DynamicImage, open, Pixel, combine_normals};
+use tex::{Density, Rgba, GuidedBlend, BlendType, Stop, DynamicImage, open, Pixel, combine_normals, FilterType};
 use std::path::PathBuf;
 use std::fmt;
 use std::rc::Rc;
@@ -329,7 +329,12 @@ impl SimulationRunner {
         // If no original texture, keep the output map with transparency
         // without blending over.
         if let Some(original_map) = original_map {
-            let original_map = open(original_map).unwrap();
+            let mut original_map = open(original_map).unwrap();
+
+            if blend_result_tex.dimensions() != original_map.dimensions() {
+                let (width, height) = blend_result_tex.dimensions();
+                original_map = original_map.resize(width, height, FilterType::Triangle);
+            }
 
             assert_eq!(
                 blend_result_tex.dimensions(), original_map.dimensions(),
