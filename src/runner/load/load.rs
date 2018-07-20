@@ -3,20 +3,24 @@ use geom::{Vec3, Vertex};
 use asset::obj;
 use scene::{Entity, Mesh};
 use sim::{Simulation, SurfelData, SurfelRule, TonSourceBuilder, TonSource};
-use spec::{SimulationSpec, SurfelSpec, SurfelRuleSpec, TonSourceSpec, EffectSpec, Stop};
+use spec::{SimulationSpec, SurfelSpec, SurfelRuleSpec, TonSourceSpec, EffectSpec, Stop, BenchSpec};
 use surf::{Surface, SurfaceBuilder, SurfelSampling, Surfel};
+use std::io::Write;
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
 use std::path::PathBuf;
+use std::time::SystemTime;
 use std::cmp::Eq;
 use std::hash::Hash;
 use std::env::current_dir;
 use serde_yaml;
-use files::Resolver;
+use files::{Resolver, fs_timestamp};
 use failure::{Error, ResultExt};
 use runner::load::err::LoadError;
 
 pub fn load<P : Into<PathBuf>>(simulation_spec_file: P) -> Result<SimulationRunner, Error> {
+    let load_start_time = SystemTime::now();
+
     let simulation_spec_path = simulation_spec_file.into();
 
     if !simulation_spec_path.exists() {
@@ -26,10 +30,10 @@ pub fn load<P : Into<PathBuf>>(simulation_spec_file: P) -> Result<SimulationRunn
     let mut simulation_spec_file = File::open(&simulation_spec_path)
         .context("Simulation spec could not be opened.")?;
 
-    let resolver = build_resolver(&simulation_spec_path)?;
-
     let mut spec : SimulationSpec = serde_yaml::from_reader(&mut simulation_spec_file)
         .context("Failed parsing simulation spec.")?;
+
+    let resolver = build_resolver(&simulation_spec_path)?;
 
     let surfel_specs_by_material_name = surfel_specs_by_material_name(&spec, &resolver)?;
 
@@ -84,6 +88,25 @@ pub fn load<P : Into<PathBuf>>(simulation_spec_file: P) -> Result<SimulationRunn
     };
 
     let runner = SimulationRunner::new(spec, unique_substance_names, simulation, entities);
+
+    if let Some(BenchSpec { setup: Some(ref setup_csv), .. }) = runner.spec().benchmark {
+        let elapsed = load_start_time.elapsed().unwrap();
+        let secs = elapsed.as_secs();
+        let nanos = elapsed.subsec_nanos();
+
+        let mut setup_csv = File::open(
+            setup_csv.to_str()
+                .unwrap()
+                .replace("{datetime}", &fs_timestamp(runner.creation_time()))
+        ).expect("Could not write to benchmark sink.");
+
+        writeln!(
+            setup_csv,
+            "{}.{:09}", secs, nanos
+        ).expect("Could not write to benchmark sink.");
+        
+    }
+
     Ok(runner)
 }
 
