@@ -1,5 +1,5 @@
+use std::fs::{create_dir_all, File};
 use std::io;
-use std::fs::{File, create_dir_all};
 use std::path::PathBuf;
 
 /// Attempts to create or overwrite the file at the given path.
@@ -13,7 +13,8 @@ use std::path::PathBuf;
 /// intermediate directories necessary to create it and finally
 /// creates and returns the file.
 pub fn create_file_recursively<P>(path: P) -> Result<File, io::Error>
-    where P : Into<PathBuf>
+where
+    P: Into<PathBuf>,
 {
     match &path.into() {
         // Path, following symlinks, already exists and is a file, overwrite it

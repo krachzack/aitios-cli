@@ -1,10 +1,10 @@
-use scene::Entity;
-use tex::build_surfel_lookup_table;
 use geom::Vertex;
+use scene::Entity;
 use sim::SurfelData;
-use std::collections::HashMap;
 use spec::SurfelLookup;
+use std::collections::HashMap;
 use surf;
+use tex::build_surfel_lookup_table;
 
 type Surface = surf::Surface<surf::Surfel<Vertex, SurfelData>>;
 
@@ -18,12 +18,14 @@ struct Key {
     width: usize,
     height: usize,
     count: usize,
-    island_bleed: usize
+    island_bleed: usize,
 }
 
 impl SurfelTableCache {
     pub fn new() -> Self {
-        Self { surfel_tables: HashMap::new() }
+        Self {
+            surfel_tables: HashMap::new(),
+        }
     }
 
     /// Lazily sets up a surfel table with the defined parameters for the entity with
@@ -41,33 +43,39 @@ impl SurfelTableCache {
     /// # Panics
     /// This function currently panicks for surfel lookup policies different from
     /// `Nearest(usize)`, since this is not yet supported.
-    pub fn prepare(&mut self,
+    pub fn prepare(
+        &mut self,
         entity_idx: usize,
         width: usize,
         height: usize,
         surfel_lookup: SurfelLookup,
         island_bleed: usize,
         entities: &Vec<Entity>,
-        surface: &Surface
+        surface: &Surface,
     ) {
         let count = match surfel_lookup {
             SurfelLookup::Nearest { count } => count,
-            _ => unimplemented!("Only n nearest surfels can be cached for now, not within r")
+            _ => unimplemented!("Only n nearest surfels can be cached for now, not within r"),
         };
 
         let key = Key {
-            entity_idx, width, height, count, island_bleed
+            entity_idx,
+            width,
+            height,
+            count,
+            island_bleed,
         };
 
-        self.surfel_tables.entry(key)
-            .or_insert_with(|| build_surfel_lookup_table(
+        self.surfel_tables.entry(key).or_insert_with(|| {
+            build_surfel_lookup_table(
                 &entities[entity_idx],
                 surface,
                 count,
                 width,
                 height,
-                island_bleed)
-            );
+                island_bleed,
+            )
+        });
     }
 
     /// Looks up a surfel association table with the given parameters and panicks if no such
@@ -82,21 +90,27 @@ impl SurfelTableCache {
     /// This function panics if no corresponding surfel table has been prepared in advance.
     /// It currently also panicks for surfel lookup policies different from `Nearest(usize)`,
     /// since this is not yet supported.
-    pub fn lookup(&self,
+    pub fn lookup(
+        &self,
         entity_idx: usize,
         width: usize,
         height: usize,
         surfel_lookup: SurfelLookup,
-        island_bleed: usize
-    ) -> &Vec<Vec<(f32, usize)>>
-    {
+        island_bleed: usize,
+    ) -> &Vec<Vec<(f32, usize)>> {
         let count = match surfel_lookup {
             SurfelLookup::Nearest { count } => count,
-            _ => unimplemented!("Only n nearest surfels can be cached for now, not within r")
+            _ => unimplemented!("Only n nearest surfels can be cached for now, not within r"),
         };
 
-        self.surfel_tables.get(&Key {
-            entity_idx, width, height, count, island_bleed
-        }).unwrap()
+        self.surfel_tables
+            .get(&Key {
+                entity_idx,
+                width,
+                height,
+                count,
+                island_bleed,
+            })
+            .unwrap()
     }
 }

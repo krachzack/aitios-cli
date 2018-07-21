@@ -1,19 +1,22 @@
 use asset::obj;
-use sim::Simulation;
-use scene::{Entity, MaterialBuilder};
-use spec::{EffectSpec, SimulationSpec, SurfelLookup, Blend, BenchSpec};
-use tex::{Density, Rgba, GuidedBlend, BlendType, Stop, DynamicImage, open, Pixel, combine_normals, FilterType};
-use std::path::PathBuf;
-use std::fmt;
-use std::rc::Rc;
+use bencher::Bencher;
 use chrono::prelude::*;
 use files::{create_file_recursively, fs_timestamp};
+use geom::Vertex;
 use runner::surfel_table_cache::SurfelTableCache;
+use scene::{Entity, MaterialBuilder};
+use sim::Simulation;
+use sim::SurfelData;
+use spec::{BenchSpec, Blend, EffectSpec, SimulationSpec, SurfelLookup};
+use std::fmt;
+use std::path::PathBuf;
+use std::rc::Rc;
 use surf;
 use tex::{self, GenericImage};
-use geom::Vertex;
-use sim::SurfelData;
-use bencher::Bencher;
+use tex::{
+    combine_normals, open, BlendType, Density, DynamicImage, FilterType, GuidedBlend, Pixel, Rgba,
+    Stop,
+};
 
 type Surface = surf::Surface<surf::Surfel<Vertex, SurfelData>>;
 
@@ -28,11 +31,16 @@ pub struct SimulationRunner {
     surfel_tables: SurfelTableCache,
     iteration_benchmark: Option<Bencher>,
     tracing_benchmark: Option<Bencher>,
-    synthesis_benchmark: Option<Bencher>
+    synthesis_benchmark: Option<Bencher>,
 }
 
 impl SimulationRunner {
-    pub fn new(spec: SimulationSpec, unique_substance_names: Vec<String>, sim: Simulation, entities: Vec<Entity>) -> Self {
+    pub fn new(
+        spec: SimulationSpec,
+        unique_substance_names: Vec<String>,
+        sim: Simulation,
+        entities: Vec<Entity>,
+    ) -> Self {
         let creation_time = Local::now();
 
         let surfel_tables = build_surfel_tables(&spec.effects, &entities, sim.surface());
@@ -50,7 +58,7 @@ impl SimulationRunner {
             surfel_tables,
             iteration_benchmark,
             tracing_benchmark,
-            synthesis_benchmark
+            synthesis_benchmark,
         }
     }
 
@@ -78,27 +86,21 @@ impl SimulationRunner {
     fn perform_iteration(&mut self) {
         // Write timings of iterations to CSV benchmarks if required
         // by simulation spec.
-        let _iteration_bench = self.iteration_benchmark
-            .as_ref()
-            .map(|b| b.bench());
+        let _iteration_bench = self.iteration_benchmark.as_ref().map(|b| b.bench());
 
         info!("Iteration {} started...", self.iteration);
 
         // Perform tracing and substance transport
         {
-            let _tracing_and_transport_bench = self.tracing_benchmark
-                .as_ref()
-                .map(|b| b.bench());
+            let _tracing_and_transport_bench = self.tracing_benchmark.as_ref().map(|b| b.bench());
 
             info!("Tracing...");
             self.sim.run();
         }
 
         // NOTE surfel table cache invalidation necessary if geometry was changed
-        {
-            info!("Texture synthesis...");
-            self.perform_effects();
-        }
+        info!("Texture synthesis...");
+        self.perform_effects();
     }
 
     fn perform_effects(&self) {
@@ -130,7 +132,15 @@ impl SimulationRunner {
                 ref obj_pattern,
                 ref mtl_pattern,
                 ..
-            } => self.perform_density(width, height, island_bleed, surfel_lookup, tex_pattern, obj_pattern, mtl_pattern),
+            } => self.perform_density(
+                width,
+                height,
+                island_bleed,
+                surfel_lookup,
+                tex_pattern,
+                obj_pattern,
+                mtl_pattern,
+            ),
             &EffectSpec::DumpSurfels { ref obj_pattern } => self.export_surfels(obj_pattern),
             &EffectSpec::Layer {
                 ref materials,
@@ -141,7 +151,7 @@ impl SimulationRunner {
                 ref displacement,
                 ref albedo,
                 ref metallicity,
-                ref roughness
+                ref roughness,
             } => self.perform_layer(
                 entities,
                 materials,
@@ -152,35 +162,52 @@ impl SimulationRunner {
                 displacement,
                 albedo,
                 metallicity,
-                roughness
+                roughness,
             ),
             &EffectSpec::Export {
                 ref obj_pattern,
-                ref mtl_pattern
-            } => self.export_scene(entities.iter(), obj_pattern, mtl_pattern, "all") // When {substance} is used, write "all"
+                ref mtl_pattern,
+            } => self.export_scene(entities.iter(), obj_pattern, mtl_pattern, "all"), // When {substance} is used, write "all"
         }
     }
 
     /// For each substance, create a density map for each entity, then serialize a scene with
     /// textures applied. Does not influence other effects and leaves the original scene unchanged.
     /// Useful for debugging.
-    fn perform_density(&self, width: usize, height: usize, island_bleed: usize, surfel_lookup: SurfelLookup, tex_pattern: &String, obj_pattern: &Option<String>, mtl_pattern: &Option<String>) {
+    fn perform_density(
+        &self,
+        width: usize,
+        height: usize,
+        island_bleed: usize,
+        surfel_lookup: SurfelLookup,
+        tex_pattern: &String,
+        obj_pattern: &Option<String>,
+        mtl_pattern: &Option<String>,
+    ) {
         for (substance_idx, substance_name) in self.unique_substance_names.iter().enumerate() {
             let density = Density::new(
                 substance_idx,
-                width, // tex_width
+                width,  // tex_width
                 height, // tex_height
                 island_bleed,
                 0.0, // min_density
                 1.0, // max_density
-                Rgba { data: [ 255, 255, 255, 255 ] }, // undefined_color
-                Rgba { data: [ 255, 255, 255, 255 ] }, // min color
-                Rgba { data: [ 0, 0, 0, 255 ] } // max color
+                Rgba {
+                    data: [255, 255, 255, 255],
+                }, // undefined_color
+                Rgba {
+                    data: [255, 255, 255, 255],
+                }, // min color
+                Rgba {
+                    data: [0, 0, 0, 255],
+                }, // max color
             );
 
             // Make lazy copy of original scene with each material replaced
             // by a new one with diffuse color set to substance density
-            let density_scene = self.entities.iter()
+            let density_scene = self
+                .entities
+                .iter()
                 .enumerate()
                 .map(|(ent_idx, ent)| {
                     let surfel_table = self.surfel_tables.lookup(
@@ -188,15 +215,13 @@ impl SimulationRunner {
                         width,
                         height,
                         surfel_lookup,
-                        island_bleed
+                        island_bleed,
                     );
 
-                    let density_tex = density.collect_with_table(
-                        self.sim.surface(),
-                        surfel_table
-                    );
+                    let density_tex = density.collect_with_table(self.sim.surface(), surfel_table);
 
-                    let tex_filename = tex_pattern.replace("{iteration}", &format!("{}", self.iteration))
+                    let tex_filename = tex_pattern
+                        .replace("{iteration}", &format!("{}", self.iteration))
                         .replace("{id}", &format!("{}", ent_idx))
                         .replace("{entity}", &ent.name)
                         .replace("{substance}", substance_name)
@@ -214,16 +239,24 @@ impl SimulationRunner {
                     Entity {
                         material: Rc::new(
                             MaterialBuilder::new()
-                                .name(format!("{}-density-{}-{}", self.unique_substance_names[substance_idx], ent_idx, ent.name))
+                                .name(format!(
+                                    "{}-density-{}-{}",
+                                    self.unique_substance_names[substance_idx], ent_idx, ent.name
+                                ))
                                 .diffuse_color_map(tex_filename)
-                                .build()
+                                .build(),
                         ),
                         ..ent.clone()
                     }
                 })
                 .collect::<Vec<_>>();
 
-            self.export_scene(density_scene.iter(), obj_pattern, mtl_pattern, &substance_name);
+            self.export_scene(
+                density_scene.iter(),
+                obj_pattern,
+                mtl_pattern,
+                &substance_name,
+            );
         }
     }
 
@@ -239,52 +272,98 @@ impl SimulationRunner {
         displacement: &Option<Blend>,
         albedo: &Option<Blend>,
         metallicity: &Option<Blend>,
-        roughness: &Option<Blend>
-    )
-    {
-        let substance_idx = self.unique_substance_names
+        roughness: &Option<Blend>,
+    ) {
+        let substance_idx = self
+            .unique_substance_names
             .iter()
             .position(|s| s == substance)
             .expect(&format!("Blend substance does not exist: {}", substance));
 
-        entities.iter_mut()
+        entities
+            .iter_mut()
             .enumerate()
             .filter(|(_, e)| is_entity_applicable_for_materials(e, materials))
             .for_each(|(idx, entity)| {
                 let mut mat = MaterialBuilder::from(&*entity.material);
 
                 if let Some(normal) = normal {
-                    let new_tex_path = self.perform_blend(entity, entity.material.normal_map(), normal, substance_idx, idx, surfel_lookup, island_bleed, BlendType::Normal);
+                    let new_tex_path = self.perform_blend(
+                        entity,
+                        entity.material.normal_map(),
+                        normal,
+                        substance_idx,
+                        idx,
+                        surfel_lookup,
+                        island_bleed,
+                        BlendType::Normal,
+                    );
                     mat = mat.normal_map(new_tex_path);
                 }
 
                 if let Some(displacement) = displacement {
-                    let new_tex_path = self.perform_blend(entity, entity.material.displacement_map(), displacement, substance_idx, idx, surfel_lookup, island_bleed, BlendType::Linear);
+                    let new_tex_path = self.perform_blend(
+                        entity,
+                        entity.material.displacement_map(),
+                        displacement,
+                        substance_idx,
+                        idx,
+                        surfel_lookup,
+                        island_bleed,
+                        BlendType::Linear,
+                    );
                     mat = mat.displacement_map(new_tex_path);
                 }
 
                 if let Some(albedo) = albedo {
-                    let new_tex_path = self.perform_blend(entity, entity.material.diffuse_color_map(), albedo, substance_idx, idx, surfel_lookup, island_bleed, BlendType::Linear);
+                    let new_tex_path = self.perform_blend(
+                        entity,
+                        entity.material.diffuse_color_map(),
+                        albedo,
+                        substance_idx,
+                        idx,
+                        surfel_lookup,
+                        island_bleed,
+                        BlendType::Linear,
+                    );
                     mat = mat.diffuse_color_map(new_tex_path);
                 }
 
                 if let Some(metallicity) = metallicity {
-                    let new_tex_path = self.perform_blend(entity, entity.material.metallic_map(), metallicity, substance_idx, idx, surfel_lookup, island_bleed, BlendType::Linear);
+                    let new_tex_path = self.perform_blend(
+                        entity,
+                        entity.material.metallic_map(),
+                        metallicity,
+                        substance_idx,
+                        idx,
+                        surfel_lookup,
+                        island_bleed,
+                        BlendType::Linear,
+                    );
                     mat = mat.metallic_map(new_tex_path);
                 }
 
                 // REVIEW since mtl supports glossiness, maybe invert the roughness with a MTL filter
                 if let Some(roughness) = roughness {
-                    let new_tex_path = self.perform_blend(entity, entity.material.roughness_map(), roughness, substance_idx, idx, surfel_lookup, island_bleed, BlendType::Linear);
+                    let new_tex_path = self.perform_blend(
+                        entity,
+                        entity.material.roughness_map(),
+                        roughness,
+                        substance_idx,
+                        idx,
+                        surfel_lookup,
+                        island_bleed,
+                        BlendType::Linear,
+                    );
                     mat = mat.roughness_map(new_tex_path);
                 }
 
                 entity.material = Rc::new(mat.build());
             });
-
     }
 
-    fn perform_blend(&self,
+    fn perform_blend(
+        &self,
         entity: &Entity,
         original_map: Option<&PathBuf>,
         blend: &Blend,
@@ -292,36 +371,35 @@ impl SimulationRunner {
         entity_idx: usize,
         surfel_lookup: SurfelLookup,
         island_bleed: usize,
-        blend_type: BlendType
-    ) -> PathBuf
-    {
-        let (width, height) = blend_output_size(
-            blend,
-            original_map
-        );
+        blend_type: BlendType,
+    ) -> PathBuf {
+        let (width, height) = blend_output_size(blend, original_map);
 
         let table = self.surfel_tables.lookup(
             entity_idx,
             width as usize,
             height as usize,
             surfel_lookup,
-            island_bleed
+            island_bleed,
         );
 
         let guide = Density::new(
             substance_idx,
-            width as usize, // tex_width
+            width as usize,  // tex_width
             height as usize, // tex_height
             island_bleed,
             0.0, // min_density
             1.0, // max_density
-            Rgba { data: [ 0,   0,   0,   255 ] }, // undefined_color
-            Rgba { data: [ 0,   0,   0,   255 ] }, // min color
-            Rgba { data: [ 255, 255, 255, 255 ] } // max color
-        ).collect_with_table(
-            self.sim.surface(),
-            table
-        );
+            Rgba {
+                data: [0, 0, 0, 255],
+            }, // undefined_color
+            Rgba {
+                data: [0, 0, 0, 255],
+            }, // min color
+            Rgba {
+                data: [255, 255, 255, 255],
+            }, // max color
+        ).collect_with_table(self.sim.surface(), table);
 
         let guided_blend = Self::make_guided_blend(blend, blend_type, original_map);
         let mut blend_result_tex = guided_blend.perform(&guide);
@@ -339,20 +417,23 @@ impl SimulationRunner {
             }
 
             assert_eq!(
-                blend_result_tex.dimensions(), original_map.dimensions(),
+                blend_result_tex.dimensions(),
+                original_map.dimensions(),
                 "When original map is present, result of layer blend should have same dimensions"
             );
 
             match blend_type {
                 // For normals, add blended map to base map as detail normal map
-                BlendType::Normal => blend_result_tex.pixels_mut()
+                BlendType::Normal => blend_result_tex
+                    .pixels_mut()
                     .zip(original_map.pixels())
                     .for_each(|(top, (_, _, bottom))| {
                         // TODO implement influence (maybe rotate top towards base?)
                         *top = combine_normals(bottom, *top);
                     }),
                 // For albedo, roughness, etc modulate alpha with influence and blend over original
-                BlendType::Linear => blend_result_tex.pixels_mut()
+                BlendType::Linear => blend_result_tex
+                    .pixels_mut()
                     .zip(original_map.pixels())
                     .for_each(|(top, (_, _, bottom))| {
                         let mut bottom = bottom.clone();
@@ -362,13 +443,13 @@ impl SimulationRunner {
                         }
                         bottom.blend(top);
                         *top = bottom;
-                    })
-                // TODO maybe displacement needs some special treatment so the baseline is at 0.5
-                //      displacement and normals should maybe also be mutually exclusive
+                    }), // TODO maybe displacement needs some special treatment so the baseline is at 0.5
+                        //      displacement and normals should maybe also be mutually exclusive
             }
         }
 
-        let tex_filename = blend.tex_pattern
+        let tex_filename = blend
+            .tex_pattern
             .replace("{iteration}", &format!("{}", self.iteration))
             .replace("{id}", &format!("{}", entity_idx))
             .replace("{entity}", &entity.name)
@@ -385,17 +466,21 @@ impl SimulationRunner {
         PathBuf::from(tex_filename)
     }
 
-    fn make_guided_blend(blend: &Blend, blend_type: BlendType, original_map: Option<&PathBuf>) -> GuidedBlend<DynamicImage> {
+    fn make_guided_blend(
+        blend: &Blend,
+        blend_type: BlendType,
+        original_map: Option<&PathBuf>,
+    ) -> GuidedBlend<DynamicImage> {
         let mut stops = Vec::with_capacity(blend.stops.len() + 1);
 
         // Add implicit 0.0 stop with original texture, if present
         match original_map {
             Some(original_map) => if !blend.stops.iter().any(|s| s.cenith == 0.0) {
                 stops.push(Stop::new(0.0, tex::open(original_map).unwrap()));
-            }
+            },
             None => if blend.stops.is_empty() {
                 panic!("Failed to do a blend effect because no stops are defined and no original map is defined either")
-            }
+            },
         }
 
         // Then add the configured stops
@@ -414,8 +499,14 @@ impl SimulationRunner {
         GuidedBlend::with_type(stops.into_iter(), blend_type)
     }
 
-    fn export_scene<'a, E>(&'a self, entities: E, obj_pattern: &Option<String>, mtl_pattern: &Option<String>, substance: &str)
-        where E : IntoIterator<Item = &'a Entity>
+    fn export_scene<'a, E>(
+        &'a self,
+        entities: E,
+        obj_pattern: &Option<String>,
+        mtl_pattern: &Option<String>,
+        substance: &str,
+    ) where
+        E: IntoIterator<Item = &'a Entity>,
     {
         let datetime = &fs_timestamp(self.creation_time);
 
@@ -450,13 +541,15 @@ impl SimulationRunner {
     fn export_surfels(&self, surfel_obj_pattern: &str) {
         let datetime = &fs_timestamp(self.creation_time);
 
-        let surfel_obj_path = surfel_obj_pattern.replace("{iteration}", &format!("{}", self.iteration))
+        let surfel_obj_path = surfel_obj_pattern
+            .replace("{iteration}", &format!("{}", self.iteration))
             .replace("{datetime}", datetime);
 
         let mut obj_file = create_file_recursively(surfel_obj_path)
             .expect("Failed to create OBJ file to save surfels into.");
 
-        self.sim.surface()
+        self.sim
+            .surface()
             .dump(&mut obj_file)
             .expect("Failed to save surfels to OBJ file");
     }
@@ -464,25 +557,31 @@ impl SimulationRunner {
 
 // Underscore material is catchall as always, empty array also means admit all materials
 fn is_entity_applicable_for_materials(entity: &Entity, materials: &Vec<String>) -> bool {
-    materials.is_empty() || materials.iter().any(|m| m == "_" || m == entity.material.name())
+    materials.is_empty()
+        || materials
+            .iter()
+            .any(|m| m == "_" || m == entity.material.name())
 }
 
-fn build_benchmarks(benchmark: &Option<BenchSpec>, creation_time: DateTime<Local>)
-    -> (Option<Bencher>, Option<Bencher>, Option<Bencher>)
-{
-    fn build_benchmark(target_file: &Option<PathBuf>, creation_time: DateTime<Local>) -> Option<Bencher> {
-        target_file.as_ref()
+fn build_benchmarks(
+    benchmark: &Option<BenchSpec>,
+    creation_time: DateTime<Local>,
+) -> (Option<Bencher>, Option<Bencher>, Option<Bencher>) {
+    fn build_benchmark(
+        target_file: &Option<PathBuf>,
+        creation_time: DateTime<Local>,
+    ) -> Option<Bencher> {
+        target_file
+            .as_ref()
             .and_then(|csv| {
-                let csv = csv.to_str()
+                let csv = csv
+                    .to_str()
                     .unwrap()
                     .replace("{datetime}", &fs_timestamp(creation_time));
 
-                Some(create_file_recursively(csv)
-                    .expect("Failed to create benchmark file"))
+                Some(create_file_recursively(csv).expect("Failed to create benchmark file"))
             })
-            .and_then(|csv| Some(
-                Bencher::new(csv)
-            ))
+            .and_then(|csv| Some(Bencher::new(csv)))
     }
 
     if let Some(ref benchmark) = benchmark {
@@ -496,7 +595,11 @@ fn build_benchmarks(benchmark: &Option<BenchSpec>, creation_time: DateTime<Local
     }
 }
 
-fn build_surfel_tables(effects: &Vec<EffectSpec>, entities: &Vec<Entity>, surface: &Surface) -> SurfelTableCache {
+fn build_surfel_tables(
+    effects: &Vec<EffectSpec>,
+    entities: &Vec<Entity>,
+    surface: &Surface,
+) -> SurfelTableCache {
     let mut surfel_tables = SurfelTableCache::new();
 
     for effect in effects {
@@ -612,17 +715,18 @@ fn build_surfel_tables(effects: &Vec<EffectSpec>, entities: &Vec<Entity>, surfac
                 island_bleed,
                 surfel_lookup,
                 ..
-            } => (0..entities.len())
-                .for_each(|idx| surfel_tables.prepare(
+            } => (0..entities.len()).for_each(|idx| {
+                surfel_tables.prepare(
                     idx,
                     width,
                     height,
                     surfel_lookup,
                     island_bleed,
                     &entities,
-                    surface
-                )),
-            _ => ()
+                    surface,
+                )
+            }),
+            _ => (),
         }
     }
 
@@ -653,11 +757,14 @@ impl fmt::Display for SimulationRunner {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "Name:               {}\n", self.spec.name)?;
         write!(f, "Description:        {}\n", self.spec.description)?;
-        write!(f, "Scene:              {}\n", self.spec.scene.file_name().unwrap().to_str().unwrap())?;
+        write!(
+            f,
+            "Scene:              {}\n",
+            self.spec.scene.file_name().unwrap().to_str().unwrap()
+        )?;
         write!(f, "Iterations:         {}\n", self.spec.iterations)?;
         write!(f, "Surfels:            {}\n", self.sim.surfel_count())?;
         write!(f, "Tons per iteration: {}\n", self.sim.emission_count())?;
         write!(f, "Substances:         {:?}", self.unique_substance_names)
     }
 }
-

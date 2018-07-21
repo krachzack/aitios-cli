@@ -1,10 +1,11 @@
-extern crate aitios_geom as geom;
 extern crate aitios_asset as asset;
+extern crate aitios_geom as geom;
+extern crate aitios_scene as scene;
 extern crate aitios_sim as sim;
 extern crate aitios_surf as surf;
-extern crate aitios_scene as scene;
 extern crate aitios_tex as tex;
-#[macro_use] extern crate clap;
+#[macro_use]
+extern crate clap;
 #[macro_use]
 extern crate failure;
 #[macro_use]
@@ -12,18 +13,18 @@ extern crate failure_derive;
 extern crate chrono;
 #[macro_use]
 extern crate serde_derive;
+extern crate rayon;
 extern crate serde;
 extern crate serde_yaml;
-extern crate rayon;
 #[macro_use]
 extern crate log;
 extern crate simplelog;
 
 mod bencher;
-mod spec;
-mod runner;
 mod files;
 mod run;
+mod runner;
+mod spec;
 
 use failure::{Error, Fail};
 use log::Level::Debug;
@@ -61,19 +62,16 @@ fn summarize_error(error: Error) -> String {
         None => summary,
         // If second cause is root cause, don't bother
         // enumerating the cause levels.
-        Some(cause) if cause.cause().is_none() =>
-            format!("{}\ncause: {}", summary, cause),
+        Some(cause) if cause.cause().is_none() => format!("{}\ncause: {}", summary, cause),
         // But do so if more than one cause level.
-        Some(_) => (1..).zip(causes)
-            .fold(
-                summary,
-                |acc, (idx, cause)| format!(
-                    "{acc}\ncause {level}: {msg}",
-                    acc = acc,
-                    level = idx,
-                    msg = cause
-                )
+        Some(_) => (1..).zip(causes).fold(summary, |acc, (idx, cause)| {
+            format!(
+                "{acc}\ncause {level}: {msg}",
+                acc = acc,
+                level = idx,
+                msg = cause
             )
+        }),
     }
 }
 

@@ -1,24 +1,26 @@
-use runner::SimulationRunner;
-use geom::{Vec3, Vertex};
 use asset::obj;
+use failure::{Error, ResultExt};
+use files::{create_file_recursively, fs_timestamp, Resolver};
+use geom::{Vec3, Vertex};
+use runner::load::err::LoadError;
+use runner::SimulationRunner;
 use scene::{Entity, Mesh};
-use sim::{Simulation, SurfelData, SurfelRule, TonSourceBuilder, TonSource};
-use spec::{SimulationSpec, SurfelSpec, SurfelRuleSpec, TonSourceSpec, EffectSpec, Stop, BenchSpec};
-use surf::{Surface, SurfaceBuilder, SurfelSampling, Surfel};
-use std::io::Write;
+use serde_yaml;
+use sim::{Simulation, SurfelData, SurfelRule, TonSource, TonSourceBuilder};
+use spec::{
+    BenchSpec, EffectSpec, SimulationSpec, Stop, SurfelRuleSpec, SurfelSpec, TonSourceSpec,
+};
+use std::cmp::Eq;
 use std::collections::{HashMap, HashSet};
+use std::env::current_dir;
 use std::fs::File;
+use std::hash::Hash;
+use std::io::Write;
 use std::path::PathBuf;
 use std::time::SystemTime;
-use std::cmp::Eq;
-use std::hash::Hash;
-use std::env::current_dir;
-use serde_yaml;
-use files::{Resolver, fs_timestamp, create_file_recursively};
-use failure::{Error, ResultExt};
-use runner::load::err::LoadError;
+use surf::{Surface, SurfaceBuilder, Surfel, SurfelSampling};
 
-pub fn load<P : Into<PathBuf>>(simulation_spec_file: P) -> Result<SimulationRunner, Error> {
+pub fn load<P: Into<PathBuf>>(simulation_spec_file: P) -> Result<SimulationRunner, Error> {
     let load_start_time = SystemTime::now();
 
     let simulation_spec_path = simulation_spec_file.into();
@@ -27,10 +29,10 @@ pub fn load<P : Into<PathBuf>>(simulation_spec_file: P) -> Result<SimulationRunn
         return Err(format_err!("Simulation spec does not exist"));
     }
 
-    let mut simulation_spec_file = File::open(&simulation_spec_path)
-        .context("Simulation spec could not be opened.")?;
+    let mut simulation_spec_file =
+        File::open(&simulation_spec_path).context("Simulation spec could not be opened.")?;
 
-    let mut spec : SimulationSpec = serde_yaml::from_reader(&mut simulation_spec_file)
+    let mut spec: SimulationSpec = serde_yaml::from_reader(&mut simulation_spec_file)
         .context("Failed parsing simulation spec.")?;
 
     let resolver = build_resolver(&simulation_spec_path)?;
@@ -38,19 +40,22 @@ pub fn load<P : Into<PathBuf>>(simulation_spec_file: P) -> Result<SimulationRunn
     let surfel_specs_by_material_name = surfel_specs_by_material_name(&spec, &resolver)?;
 
     let entities = {
-        let scene_path = resolver.resolve(&spec.scene)
+        let scene_path = resolver
+            .resolve(&spec.scene)
             .context("Simulation scene could not be found.")?;
-        let mut entities = obj::load(&scene_path)
-            .context("Simulation scene was found but could not be read.")?;
+        let mut entities =
+            obj::load(&scene_path).context("Simulation scene was found but could not be read.")?;
 
         // Throw out all entitites which have no mapped surfel spec,
         // unless there is a fallback material named "_".
         // This ignoring affects intersection test and surfel generation,
         // potentially providing a massive speedup if many objects ignored.
         if !surfel_specs_by_material_name.contains_key("_") {
-            entities.retain(|e|
-                surfel_specs_by_material_name.keys()
-                    .any(|n| n == e.material.name()));
+            entities.retain(|e| {
+                surfel_specs_by_material_name
+                    .keys()
+                    .any(|n| n == e.material.name())
+            });
         }
 
         entities
@@ -58,7 +63,8 @@ pub fn load<P : Into<PathBuf>>(simulation_spec_file: P) -> Result<SimulationRunn
 
     let source_specs = load_source_specs(&spec.sources, &resolver)?;
 
-    let unique_substance_names = unique_substance_names(&surfel_specs_by_material_name, &source_specs);
+    let unique_substance_names =
+        unique_substance_names(&surfel_specs_by_material_name, &source_specs);
 
     if unique_substance_names.is_empty() {
         return Err(From::from(LoadError::SubstancesMissing));
@@ -72,15 +78,24 @@ pub fn load<P : Into<PathBuf>>(simulation_spec_file: P) -> Result<SimulationRunn
 
     //let surfel_rules = build_surfel_rules(&surfel_specs_by_material_name, &unique_substance_names);
     let sources = build_sources(&source_specs, &unique_substance_names, &resolver)?;
-    let surface = build_surface(&entities, &surfel_specs_by_material_name, &unique_substance_names, spec.surfel_distance);
+    let surface = build_surface(
+        &entities,
+        &surfel_specs_by_material_name,
+        &unique_substance_names,
+        spec.surfel_distance,
+    );
 
     let simulation = {
         let has_fallback_surfel_spec = surfel_specs_by_material_name.contains_key("_");
 
         // Ignoring geometry where the corresponding material has no surfel specification
         // and hence has no surfels generated, unless a fallback surfel spec is provided
-        let all_triangles = entities.iter()
-            .filter(|e| has_fallback_surfel_spec || surfel_specs_by_material_name.contains_key(e.material.name()))
+        let all_triangles = entities
+            .iter()
+            .filter(|e| {
+                has_fallback_surfel_spec
+                    || surfel_specs_by_material_name.contains_key(e.material.name())
+            })
             .flat_map(|e| e.mesh.triangles());
 
         // No global surfel rules, only per substance type mapped from material
@@ -89,22 +104,23 @@ pub fn load<P : Into<PathBuf>>(simulation_spec_file: P) -> Result<SimulationRunn
 
     let runner = SimulationRunner::new(spec, unique_substance_names, simulation, entities);
 
-    if let Some(BenchSpec { setup: Some(ref setup_csv), .. }) = runner.spec().benchmark {
+    if let Some(BenchSpec {
+        setup: Some(ref setup_csv),
+        ..
+    }) = runner.spec().benchmark
+    {
         let elapsed = load_start_time.elapsed().unwrap();
         let secs = elapsed.as_secs();
         let nanos = elapsed.subsec_nanos();
 
         let mut setup_csv = create_file_recursively(
-            setup_csv.to_str()
+            setup_csv
+                .to_str()
                 .unwrap()
-                .replace("{datetime}", &fs_timestamp(runner.creation_time()))
+                .replace("{datetime}", &fs_timestamp(runner.creation_time())),
         ).expect("Could not write to benchmark sink.");
 
-        writeln!(
-            setup_csv,
-            "{}.{:09}", secs, nanos
-        ).expect("Could not write to benchmark sink.");
-        
+        writeln!(setup_csv, "{}.{:09}", secs, nanos).expect("Could not write to benchmark sink.");
     }
 
     Ok(runner)
@@ -123,9 +139,7 @@ fn build_resolver(simulation_spec_path: &PathBuf) -> Result<Resolver, Error> {
         }
     }
 
-    resolver.add_base(
-        current_dir()?
-    )?;
+    resolver.add_base(current_dir()?)?;
 
     Ok(resolver)
 }
@@ -135,18 +149,25 @@ fn build_resolver(simulation_spec_path: &PathBuf) -> Result<Resolver, Error> {
 /// as initial values and as absorption/deposition rates
 fn unique_substance_names(
     surfel_specs: &HashMap<String, SurfelSpec>,
-    source_specs: &Vec<TonSourceSpec>
-) -> Vec<String>
-{
-    let unique_substance_names : HashSet<&String> = surfel_specs.values()
+    source_specs: &Vec<TonSourceSpec>,
+) -> Vec<String> {
+    let unique_substance_names: HashSet<&String> = surfel_specs
+        .values()
         .flat_map(|s| s.initial.keys().chain(s.deposit.keys()))
-        .chain(source_specs.iter().flat_map(|s| s.initial.keys().chain(s.absorb.keys())))
+        .chain(
+            source_specs
+                .iter()
+                .flat_map(|s| s.initial.keys().chain(s.absorb.keys())),
+        )
         .collect();
 
     unique_substance_names.into_iter().cloned().collect()
 }
 
-fn resolve_effect_spec_paths(specs: &mut Vec<EffectSpec>, resolver: &Resolver) -> Result<(), Error> {
+fn resolve_effect_spec_paths(
+    specs: &mut Vec<EffectSpec>,
+    resolver: &Resolver,
+) -> Result<(), Error> {
     for effect in specs.iter_mut() {
         match effect {
             EffectSpec::Layer {
@@ -156,29 +177,32 @@ fn resolve_effect_spec_paths(specs: &mut Vec<EffectSpec>, resolver: &Resolver) -
                 ref mut metallicity,
                 ref mut roughness,
                 ..
-             } => {
-                 if let Some(normal) = normal {
-                     resolve_stop_list_paths(&mut normal.stops, resolver)
-                        .context("Layer normal blend effect references an image that could not be found.")?;
-                 }
-                 if let Some(displacement) = displacement {
-                     resolve_stop_list_paths(&mut displacement.stops, resolver)
+            } => {
+                if let Some(normal) = normal {
+                    resolve_stop_list_paths(&mut normal.stops, resolver).context(
+                        "Layer normal blend effect references an image that could not be found.",
+                    )?;
+                }
+                if let Some(displacement) = displacement {
+                    resolve_stop_list_paths(&mut displacement.stops, resolver)
                         .context("Layer displacement blend effect references an image that could not be found.")?;
-                 }
-                 if let Some(albedo) = albedo {
-                     resolve_stop_list_paths(&mut albedo.stops, resolver)
-                        .context("Layer albedo blend effect references an image that could not be found.")?;
-                 }
-                 if let Some(metallicity) = metallicity {
-                     resolve_stop_list_paths(&mut metallicity.stops, resolver)
+                }
+                if let Some(albedo) = albedo {
+                    resolve_stop_list_paths(&mut albedo.stops, resolver).context(
+                        "Layer albedo blend effect references an image that could not be found.",
+                    )?;
+                }
+                if let Some(metallicity) = metallicity {
+                    resolve_stop_list_paths(&mut metallicity.stops, resolver)
                         .context("Layer metallicity blend effect references an image that could not be found.")?;
-                 }
-                 if let Some(roughness) = roughness {
-                     resolve_stop_list_paths(&mut roughness.stops, resolver)
-                        .context("Layer roughness blend effect references an image that could not be found.")?;
-                 }
-             },
-            _ => ()
+                }
+                if let Some(roughness) = roughness {
+                    resolve_stop_list_paths(&mut roughness.stops, resolver).context(
+                        "Layer roughness blend effect references an image that could not be found.",
+                    )?;
+                }
+            }
+            _ => (),
         }
     }
     Ok(())
@@ -195,36 +219,46 @@ fn resolve_stop_list_paths(stops: &mut Vec<Stop>, resolver: &Resolver) -> Result
     Ok(())
 }
 
-fn load_source_specs(sources: &Vec<PathBuf>, resolver: &Resolver) -> Result<Vec<TonSourceSpec>, Error> {
+fn load_source_specs(
+    sources: &Vec<PathBuf>,
+    resolver: &Resolver,
+) -> Result<Vec<TonSourceSpec>, Error> {
     if sources.is_empty() {
         return Err(From::from(LoadError::SourcesMissing));
     }
 
-    sources.iter()
+    sources
+        .iter()
         .map(|s| load_source_spec(s, resolver))
         .collect()
 }
 
 fn load_source_spec(path: &PathBuf, resolver: &Resolver) -> Result<TonSourceSpec, Error> {
-    let path = resolver.resolve(path)
+    let path = resolver
+        .resolve(path)
         .context("Ton source spec file could not be found.")?;
 
-    let spec_file = &mut File::open(path)
-        .context("Ton source spec file could not be opened.")?;
+    let spec_file = &mut File::open(path).context("Ton source spec file could not be opened.")?;
 
-    let spec : TonSourceSpec = serde_yaml::from_reader(spec_file)
-        .context("Parse error for ton source spec.")?;
+    let spec: TonSourceSpec =
+        serde_yaml::from_reader(spec_file).context("Parse error for ton source spec.")?;
 
     Ok(spec)
 }
 
-fn build_sources(sources: &Vec<TonSourceSpec>, unique_substance_names: &Vec<String>, resolver: &Resolver) -> Result<Vec<TonSource>, Error> {
-    sources.iter()
+fn build_sources(
+    sources: &Vec<TonSourceSpec>,
+    unique_substance_names: &Vec<String>,
+    resolver: &Resolver,
+) -> Result<Vec<TonSource>, Error> {
+    sources
+        .iter()
         .map(|spec| {
-            let mesh = resolver.resolve(&spec.mesh)
+            let mesh = resolver
+                .resolve(&spec.mesh)
                 .context("Ton source emission mesh could not be resolved.")?;
-            let mesh = &obj::load(&mesh)
-                .context("Ton source emission mesh could not be deserialized.")?;
+            let mesh =
+                &obj::load(&mesh).context("Ton source emission mesh could not be deserialized.")?;
             // REVIEW a valid OBJ file without contents is conveivable, this should provide a better error message
             //        not sure if should check here or upstream when loading.
             //        more than one mesh should probably be merged
@@ -233,10 +267,15 @@ fn build_sources(sources: &Vec<TonSourceSpec>, unique_substance_names: &Vec<Stri
             let mut builder = TonSourceBuilder::new();
 
             if let Some(ref direction_arr) = spec.flow_direction {
-                builder = builder.flow_direction_static(Vec3::new(direction_arr[0], direction_arr[1], direction_arr[2]));
+                builder = builder.flow_direction_static(Vec3::new(
+                    direction_arr[0],
+                    direction_arr[1],
+                    direction_arr[2],
+                ));
             }
 
-             let source = builder.mesh_shaped(mesh, spec.diffuse)
+            let source = builder
+                .mesh_shaped(mesh, spec.diffuse)
                 .emission_count(spec.emission_count)
                 .p_straight(spec.p_straight)
                 .p_parabolic(spec.p_parabolic)
@@ -253,17 +292,21 @@ fn build_sources(sources: &Vec<TonSourceSpec>, unique_substance_names: &Vec<Stri
         .collect()
 }
 
-fn surfel_specs_by_material_name(spec: &SimulationSpec, resolver: &Resolver) -> Result<HashMap<String, SurfelSpec>, Error> {
+fn surfel_specs_by_material_name(
+    spec: &SimulationSpec,
+    resolver: &Resolver,
+) -> Result<HashMap<String, SurfelSpec>, Error> {
     let mut specs = HashMap::with_capacity(spec.surfels_by_material.len());
 
     for (material_name, surfel_spec) in spec.surfels_by_material.iter() {
         let surfel_spec = &mut File::open(
-            resolver.resolve(surfel_spec)
-                .context("Surfel spec could not be found.")?
+            resolver
+                .resolve(surfel_spec)
+                .context("Surfel spec could not be found.")?,
         )?;
 
-        let surfel_spec : SurfelSpec = serde_yaml::from_reader(surfel_spec)
-            .context("Surfel spec could not be parsed.")?;
+        let surfel_spec: SurfelSpec =
+            serde_yaml::from_reader(surfel_spec).context("Surfel spec could not be parsed.")?;
 
         specs.insert(material_name.clone(), surfel_spec);
     }
@@ -275,12 +318,18 @@ fn surfel_specs_by_material_name(spec: &SimulationSpec, resolver: &Resolver) -> 
     }
 }
 
-fn build_surface(entities: &Vec<Entity>, surfel_specs_by_material_name: &HashMap<String, SurfelSpec>, unique_substance_names: &Vec<String>, surfel_distance: f32) -> Surface<Surfel<Vertex, SurfelData>> {
+fn build_surface(
+    entities: &Vec<Entity>,
+    surfel_specs_by_material_name: &HashMap<String, SurfelSpec>,
+    unique_substance_names: &Vec<String>,
+    surfel_distance: f32,
+) -> Surface<Surfel<Vertex, SurfelData>> {
     let catchall_surfel_spec = surfel_specs_by_material_name.get("_");
     let default_substance_concentration = 0.0;
     let default_deposition_rate = 0.0;
 
-    entities.iter()
+    entities
+        .iter()
         .enumerate()
         .fold(
             SurfaceBuilder::new()
@@ -289,12 +338,16 @@ fn build_surface(entities: &Vec<Entity>, surfel_specs_by_material_name: &HashMap
             |b, (entity_idx, ent)| {
                 let material_name = ent.material.name();
 
-                let surfel_spec = surfel_specs_by_material_name.get(material_name)
+                let surfel_spec = surfel_specs_by_material_name
+                    .get(material_name)
                     .or(catchall_surfel_spec);
 
                 if let Some(surfel_spec) = surfel_spec {
-                    let rules = surfel_spec.rules.iter()
-                        .map(|s| match s {
+                    let rules = surfel_spec
+                        .rules
+                        .iter()
+                        .map(|s| {
+                            match s {
                             &SurfelRuleSpec::Transfer { ref from, ref to, factor } =>
                                 SurfelRule::Transfer {
                                     source_substance_idx: unique_substance_names.iter().position(|n| n == from)
@@ -309,6 +362,7 @@ fn build_surface(entities: &Vec<Entity>, surfel_specs_by_material_name: &HashMap
                                         .expect(&format!("Surfel transport rule references unknown substance name {}", from)),
                                     factor
                                 }
+                        }
                         })
                         .collect();
 
@@ -317,30 +371,38 @@ fn build_surface(entities: &Vec<Entity>, surfel_specs_by_material_name: &HashMap
                         delta_straight: surfel_spec.reflectance.delta_straight,
                         delta_parabolic: surfel_spec.reflectance.delta_parabolic,
                         delta_flow: surfel_spec.reflectance.delta_flow,
-                        substances: extract_keys(&surfel_spec.initial, &unique_substance_names, default_substance_concentration),
+                        substances: extract_keys(
+                            &surfel_spec.initial,
+                            &unique_substance_names,
+                            default_substance_concentration,
+                        ),
                         /// Weights for the transport of substances from a settled ton to a surfel
-                        deposition_rates: extract_keys(&surfel_spec.deposit, &unique_substance_names, default_deposition_rate),
-                        rules
+                        deposition_rates: extract_keys(
+                            &surfel_spec.deposit,
+                            &unique_substance_names,
+                            default_deposition_rate,
+                        ),
+                        rules,
                     };
 
-                    info!("Sampling entity \"{}\" into surfel representation, 2r={}…", ent.name, surfel_distance);
+                    info!(
+                        "Sampling entity \"{}\" into surfel representation, 2r={}…",
+                        ent.name, surfel_distance
+                    );
 
-                    b.sample_triangles(
-                        ent.mesh.triangles(),
-                        &proto_surfel
-                    )
+                    b.sample_triangles(ent.mesh.triangles(), &proto_surfel)
                 } else {
                     // If no surfel spec is defined in the YAML, ignore the entity for the simulation
                     b
                 }
-            }
+            },
         )
         .build()
 }
 
 /// Extracts the values of the given vector of keys from the given map.
 /// If no value is found under the given key, the given default is stored in its place.
-fn extract_keys<K : Eq + Hash, V : Clone>(map: &HashMap<K, V>, keys: &Vec<K>, default: V) -> Vec<V> {
+fn extract_keys<K: Eq + Hash, V: Clone>(map: &HashMap<K, V>, keys: &Vec<K>, default: V) -> Vec<V> {
     keys.iter()
         .map(|k| map.get(k).unwrap_or(&default).clone())
         .collect()
