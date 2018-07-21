@@ -1,7 +1,7 @@
 use asset::obj;
 use failure::{Error, ResultExt};
 use files::{create_file_recursively, fs_timestamp, Resolver};
-use geom::{Vec3, Vertex};
+use geom::{Vec3, Vertex, TupleTriangle};
 use runner::load::err::LoadError;
 use runner::SimulationRunner;
 use scene::{Entity, Mesh};
@@ -10,6 +10,7 @@ use sim::{Simulation, SurfelData, SurfelRule, TonSource, TonSourceBuilder};
 use spec::{
     BenchSpec, EffectSpec, SimulationSpec, Stop, SurfelRuleSpec, SurfelSpec, TonSourceSpec,
 };
+use std::rc::Rc;
 use std::cmp::Eq;
 use std::collections::{HashMap, HashSet};
 use std::env::current_dir;
@@ -19,6 +20,7 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::time::SystemTime;
 use surf::{Surface, SurfaceBuilder, Surfel, SurfelSampling};
+use scene::DeinterleavedIndexedMeshBuf;
 
 pub fn load<P: Into<PathBuf>>(simulation_spec_file: P) -> Result<SimulationRunner, Error> {
     let load_start_time = SystemTime::now();
@@ -254,15 +256,26 @@ fn build_sources(
     sources
         .iter()
         .map(|spec| {
-            let mesh = resolver
+            let mesh_scene = resolver
                 .resolve(&spec.mesh)
                 .context("Ton source emission mesh could not be resolved.")?;
-            let mesh =
-                &obj::load(&mesh).context("Ton source emission mesh could not be deserialized.")?;
-            // REVIEW a valid OBJ file without contents is conveivable, this should provide a better error message
-            //        not sure if should check here or upstream when loading.
-            //        more than one mesh should probably be merged
-            let mesh = &mesh[0].mesh;
+            let mesh_scene =
+                &obj::load(&mesh_scene).context("Ton source emission mesh could not be deserialized.")?;
+
+            let mesh = if mesh_scene.len() == 0 {
+                panic!("Emission mesh scene does not contain any entities")
+            } else if mesh_scene.len() == 1 {
+                Rc::clone(&mesh_scene.into_iter().next().unwrap().mesh)
+            } else {
+                // Combine everything in the source mesh scene into a megamesh
+                // when encountering more than one entity
+                Rc::new(mesh_scene.iter()
+                    .flat_map(|m| m.mesh.triangles().flat_map(|t| {
+                        let TupleTriangle(v0, v1, v2) = t;
+                        vec![v0, v1, v2].into_iter()
+                    }))
+                    .collect::<DeinterleavedIndexedMeshBuf>())
+            };
 
             let mut builder = TonSourceBuilder::new();
 
@@ -275,7 +288,7 @@ fn build_sources(
             }
 
             let source = builder
-                .mesh_shaped(mesh, spec.diffuse)
+                .mesh_shaped(&mesh, spec.diffuse)
                 .emission_count(spec.emission_count)
                 .p_straight(spec.p_straight)
                 .p_parabolic(spec.p_parabolic)
