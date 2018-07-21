@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 #[derive(Debug, Deserialize)]
 pub enum EffectSpec {
-    #[serde(rename="density")]
+    #[serde(rename = "density")]
     Density {
         width: usize,
         height: usize,
@@ -14,15 +14,15 @@ pub enum EffectSpec {
         island_bleed: usize,
         tex_pattern: String,
         obj_pattern: Option<String>,
-        mtl_pattern: Option<String>
+        mtl_pattern: Option<String>,
     },
     /// Writes the scene with the effects before the declaration to the
     /// given paths. This should usually the last step, but exporting
     /// before can be useful for debugging.
-    #[serde(rename="export")]
+    #[serde(rename = "export")]
     Export {
         obj_pattern: Option<String>,
-        mtl_pattern: Option<String>
+        mtl_pattern: Option<String>,
     },
     /// Uses the concentration of the substance with the given name to create
     /// new textures for all entities with a material that has a name equal to
@@ -38,7 +38,7 @@ pub enum EffectSpec {
     /// 3. if no original map defined in entity material, use the dimensions of the largest sample texture.
     ///
     /// Multiple layer effects are allowed and will be applied in declaration order.
-    #[serde(rename="layer")]
+    #[serde(rename = "layer")]
     Layer {
         /// A list of material names where on each entity that uses it, a new material will be derived to replace it.
         materials: Vec<String>,
@@ -53,12 +53,10 @@ pub enum EffectSpec {
         displacement: Option<Blend>,
         albedo: Option<Blend>,
         metallicity: Option<Blend>,
-        roughness: Option<Blend>
+        roughness: Option<Blend>,
     },
-    #[serde(rename="dump_surfels")]
-    DumpSurfels {
-        obj_pattern: String
-    }
+    #[serde(rename = "dump_surfels")]
+    DumpSurfels { obj_pattern: String },
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -88,7 +86,7 @@ pub struct Blend {
     #[serde(default = "default_influence")]
     pub influence: f32,
     /// {entity} {iteration} {id} {substance}
-    pub tex_pattern: String
+    pub tex_pattern: String,
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -98,14 +96,14 @@ pub struct Stop {
     /// The concentration where this texture has maximum influence.
     /// To interpolate a given concentration, interpolation is performed
     /// between the textures at the cenith before and after.
-    pub cenith: f32
+    pub cenith: f32,
 }
 
 #[derive(Debug, Deserialize, Clone, Copy)]
 #[serde(untagged)]
 pub enum SurfelLookup {
     Nearest { count: usize },
-    Within { within: f32 }
+    Within { within: f32 },
 }
 
 fn default_bleed() -> usize {

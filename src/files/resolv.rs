@@ -1,28 +1,38 @@
-use std::path::{Path, PathBuf};
 use std::io;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Fail)]
 pub enum ResolveError {
     #[fail(display = "Tried to add a base path to a resolver but the given path was empty.")]
     EmptyBasePath,
-    #[fail(display = "Tried to resolve a search path with a resolver but the given path was empty.")]
+    #[fail(
+        display = "Tried to resolve a search path with a resolver but the given path was empty."
+    )]
     EmptySearchPath,
-    #[fail(display = "Attempt to add a base path {:?} failed. Cannot transform it to a canonical form. Possibly encountered non-existent path component or access rights were insufficient to canonicalize.", base_path)]
+    #[fail(
+        display = "Attempt to add a base path {:?} failed. Cannot transform it to a canonical form. Possibly encountered non-existent path component or access rights were insufficient to canonicalize.",
+        base_path
+    )]
     InaccessibleBasePath {
         base_path: PathBuf,
-        #[cause] cause: io::Error
+        #[cause]
+        cause: io::Error,
     },
-    #[fail(display = "Resolving search path {:?} failed. It was neither absolute and existing nor found in any of the base paths {:?}.", search_path, bases)]
+    #[fail(
+        display = "Resolving search path {:?} failed. It was neither absolute and existing nor found in any of the base paths {:?}.",
+        search_path,
+        bases
+    )]
     NotFound {
         search_path: PathBuf,
-        bases: Vec<PathBuf>
-    }
+        bases: Vec<PathBuf>,
+    },
 }
 
 /// Resolves existing relative and absolute filenames for using a list
 /// of base paths that the filenames for lookup can be relative to.
 pub struct Resolver {
-    bases: Vec<PathBuf>
+    bases: Vec<PathBuf>,
 }
 
 impl Resolver {
@@ -49,7 +59,7 @@ impl Resolver {
     /// let mut resolver = Resolver::new();
     /// resolver.add_base(".");
     /// ```
-    pub fn add_base<P : AsRef<Path>>(&mut self, base: P) -> Result<(), ResolveError> {
+    pub fn add_base<P: AsRef<Path>>(&mut self, base: P) -> Result<(), ResolveError> {
         let base = base.as_ref();
 
         if base.as_os_str().is_empty() {
@@ -58,12 +68,12 @@ impl Resolver {
 
         let base = match base.canonicalize() {
             Ok(base) => base,
-            Err(io) => return Err(
-                ResolveError::InaccessibleBasePath {
+            Err(io) => {
+                return Err(ResolveError::InaccessibleBasePath {
                     base_path: base.to_path_buf(),
-                    cause: io
-                }
-            )
+                    cause: io,
+                })
+            }
         };
 
         if !self.bases.contains(&base) {
@@ -135,7 +145,7 @@ impl Resolver {
     ///     );
     /// }
     /// ```
-    pub fn resolve<P : AsRef<Path>>(&self, search_path_param: P) -> Result<PathBuf, ResolveError> {
+    pub fn resolve<P: AsRef<Path>>(&self, search_path_param: P) -> Result<PathBuf, ResolveError> {
         let mut search_path = search_path_param.as_ref();
 
         if search_path.as_os_str().is_empty() {
@@ -160,37 +170,36 @@ impl Resolver {
                     // Drop the prefix component like / on unix or C:\ on Windows
                     // Result is always Ok, otherwise canonicalization would have succeeded with
                     // a root path
-                    search_path = search_path.strip_prefix(
-                        search_path.iter().next().unwrap() // unwrap safe since is_empty() returned false
-                    ).unwrap();
+                    search_path = search_path
+                        .strip_prefix(
+                            search_path.iter().next().unwrap(), // unwrap safe since is_empty() returned false
+                        )
+                        .unwrap();
                 }
             }
         }
 
-
         // Otherwise, interpret any path as relative, even if it was a non-existing absolute path.
         for mut resolve_attempt in self.bases.iter().cloned() {
             resolve_attempt.push(search_path);
-             if let Ok(resolve_attempt) = resolve_attempt.canonicalize() {
-                 // No further existence check required, canonicalize does this
-                 return Ok(resolve_attempt);
-             }
+            if let Ok(resolve_attempt) = resolve_attempt.canonicalize() {
+                // No further existence check required, canonicalize does this
+                return Ok(resolve_attempt);
+            }
         }
 
-        Err(
-            ResolveError::NotFound {
-                search_path: search_path_param.as_ref().to_path_buf(),
-                bases: self.bases.clone()
-            }
-        )
+        Err(ResolveError::NotFound {
+            search_path: search_path_param.as_ref().to_path_buf(),
+            bases: self.bases.clone(),
+        })
     }
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
-    use std::fs::{File, remove_file, create_dir, remove_dir};
     use std::env::current_dir;
+    use std::fs::{create_dir, remove_dir, remove_file, File};
 
     #[test]
     fn no_bases_relative_nonexistent() {
@@ -212,7 +221,9 @@ mod test {
             "Did not add any paths so this lookup should fail"
         );
         assert!(
-            resolver.resolve(&String::from(nonexistent_file_name)).is_err(),
+            resolver
+                .resolve(&String::from(nonexistent_file_name))
+                .is_err(),
             "Did not add any paths so this lookup should fail"
         );
         assert!(
@@ -244,7 +255,9 @@ mod test {
             "Did not add any paths so this lookup should fail"
         );
         assert!(
-            resolver.resolve(&String::from(nonexistent_file_name)).is_err(),
+            resolver
+                .resolve(&String::from(nonexistent_file_name))
+                .is_err(),
             "Did not add any paths so this lookup should fail"
         );
         assert!(
@@ -264,13 +277,22 @@ mod test {
             let _tempfile = File::create(test_filename).unwrap();
             let resolved = resolver.resolve(&test_filename);
 
-            assert!(Path::new(test_filename).exists(), "Expected temp file to be present");
-            assert!(resolved.is_err(), "Expected lookup to fail because . was not added as a base");
+            assert!(
+                Path::new(test_filename).exists(),
+                "Expected temp file to be present"
+            );
+            assert!(
+                resolved.is_err(),
+                "Expected lookup to fail because . was not added as a base"
+            );
         }
 
         // Remove the file used for existence check
         remove_file(test_filename).unwrap();
-        assert!(!Path::new(test_filename).exists(), "Expected temp file to get deleted");
+        assert!(
+            !Path::new(test_filename).exists(),
+            "Expected temp file to get deleted"
+        );
     }
 
     // An existent absolute path should be resolved to its canonicalized form.
@@ -283,19 +305,34 @@ mod test {
             let _tempfile = File::create(test_filename).unwrap();
             let test_filename_absolute = Path::new(test_filename).canonicalize().unwrap();
             assert!(test_filename_absolute.is_absolute());
-            assert!(Path::new(test_filename).exists(), "Expected temp file to be present");
-            assert!(test_filename_absolute.exists(), "Expected temp file to be present");
+            assert!(
+                Path::new(test_filename).exists(),
+                "Expected temp file to be present"
+            );
+            assert!(
+                test_filename_absolute.exists(),
+                "Expected temp file to be present"
+            );
 
             let resolved = resolver.resolve(&test_filename);
-            assert!(resolved.is_err(), "Expected lookup to fail because . was not added as a base");
+            assert!(
+                resolved.is_err(),
+                "Expected lookup to fail because . was not added as a base"
+            );
 
             let resolved = resolver.resolve(&test_filename_absolute);
-            assert!(resolved.is_ok(), "Expected lookup to succeed because search path was absolute and existent");
+            assert!(
+                resolved.is_ok(),
+                "Expected lookup to succeed because search path was absolute and existent"
+            );
         }
 
         // Remove the file used for existence check
         remove_file(test_filename).unwrap();
-        assert!(!Path::new(test_filename).exists(), "Expected temp file to get deleted");
+        assert!(
+            !Path::new(test_filename).exists(),
+            "Expected temp file to get deleted"
+        );
     }
 
     #[test]
@@ -358,8 +395,6 @@ mod test {
             }
         }
 
-
-
         remove_file(inner_temp).unwrap();
         remove_file(outer_temp).unwrap();
         remove_dir(directory).unwrap();
@@ -410,11 +445,15 @@ mod test {
         );
 
         resolver.add_base(".").unwrap();
-        let dot_resolved = resolver.resolve(".").expect("Have >0 base directories, dot should resolve to first base");
-        let cwd = current_dir().unwrap().canonicalize().expect("Could not canonicalize cwd");
+        let dot_resolved = resolver
+            .resolve(".")
+            .expect("Have >0 base directories, dot should resolve to first base");
+        let cwd = current_dir()
+            .unwrap()
+            .canonicalize()
+            .expect("Could not canonicalize cwd");
         assert_eq!(
-            dot_resolved,
-            cwd,
+            dot_resolved, cwd,
             "Have >0 base directories, dot should resolve to first base"
         );
     }

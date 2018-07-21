@@ -21,10 +21,12 @@ pub struct TonSourceSpec {
     pub flow_distance: f32,
     /// If set, provides direction of flow that is projected onto triangles to obtain
     /// final flow direction. If left out, incoming direction will be projected.
-    pub flow_direction: Option<[f32; 3]>
+    pub flow_direction: Option<[f32; 3]>,
 }
 
-fn is_diffuse_default() -> bool { false }
+fn is_diffuse_default() -> bool {
+    false
+}
 
 #[cfg(test)]
 mod test {
@@ -35,10 +37,10 @@ mod test {
     #[test]
     fn test_parse_ton_source_spec() {
         let path = "tests/examples/rain.yml";
-        let mut ton_source_spec_file = File::open(path)
-            .expect("Test ton source spec could not be opened");
+        let mut ton_source_spec_file =
+            File::open(path).expect("Test ton source spec could not be opened");
 
-        let spec : TonSourceSpec = serde_yaml::from_reader(&mut ton_source_spec_file)
+        let spec: TonSourceSpec = serde_yaml::from_reader(&mut ton_source_spec_file)
             .expect("Failed parsing example ton source spec");
 
         assert_eq!(spec.name, "Rain");
