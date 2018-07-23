@@ -20,7 +20,9 @@ extern crate serde_yaml;
 extern crate log;
 extern crate simplelog;
 
+mod app;
 mod bencher;
+mod builder;
 mod files;
 mod run;
 mod runner;

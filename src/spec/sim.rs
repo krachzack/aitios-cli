@@ -1,24 +1,45 @@
 use spec::{BenchSpec, EffectSpec};
 use std::collections::HashMap;
+use std::default::Default;
 use std::path::PathBuf;
 
 #[derive(Debug, Deserialize)]
 pub struct SimulationSpec {
+    #[serde(default)]
     pub name: String,
+    #[serde(default)]
     pub description: String,
-    pub scene: PathBuf,
-    pub iterations: usize,
+    #[serde(default)]
+    pub scenes: Vec<PathBuf>,
+    #[serde(default)]
+    pub iterations: Option<usize>,
     pub log: Option<PathBuf>,
-    #[serde(default = "default_surfel_distance")]
-    pub surfel_distance: f32,
+    pub surfel_distance: Option<f32>,
+    #[serde(default)]
     pub sources: Vec<PathBuf>,
+    #[serde(default)]
     pub surfels_by_material: HashMap<String, String>,
+    #[serde(default)]
     pub effects: Vec<EffectSpec>,
+    #[serde(default)]
     pub benchmark: Option<BenchSpec>,
 }
 
-fn default_surfel_distance() -> f32 {
-    0.01
+impl Default for SimulationSpec {
+    fn default() -> Self {
+        Self {
+            name: String::new(),
+            description: String::new(),
+            scenes: Vec::new(),
+            iterations: None,
+            log: None,
+            surfel_distance: None,
+            sources: Vec::new(),
+            surfels_by_material: HashMap::new(),
+            effects: Vec::new(),
+            benchmark: None,
+        }
+    }
 }
 
 #[cfg(test)]
@@ -37,9 +58,10 @@ mod test {
             .expect("Failed parsing example simulation spec");
 
         assert_eq!(spec.name, "Park Scene");
-        assert_eq!(
-            spec.scene.file_name().unwrap().to_str().unwrap(),
-            "buddha.obj"
+        assert!(
+            spec.scenes
+                .iter()
+                .all(|scene| scene.file_name().unwrap().to_str().unwrap() == "buddha.obj"),
         );
         assert_eq!(spec.iterations, 30);
         assert_eq!(spec.surfels_by_material.get("bronze").unwrap(), "iron.yml");

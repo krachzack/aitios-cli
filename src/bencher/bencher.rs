@@ -29,7 +29,7 @@ impl Bencher {
     /// # Panics
     /// No benchmarks are possible after the bancher has been flushed.
     /// Panics if called after `bencher.flush()`.
-    pub fn bench(&self) -> Benchmark {
+    pub fn bench<'a>(&'a self) -> Benchmark<'a> {
         if self.worker_handle.is_none() {
             panic!("Tried to benchmark but Bencher has already been flushed.")
         }

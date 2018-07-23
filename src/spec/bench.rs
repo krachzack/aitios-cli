@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct BenchSpec {
     pub iterations: Option<PathBuf>,
     pub tracing: Option<PathBuf>,

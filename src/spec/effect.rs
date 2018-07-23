@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub enum EffectSpec {
     #[serde(rename = "density")]
     Density {

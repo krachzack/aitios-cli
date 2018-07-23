@@ -1,9 +1,9 @@
-use clap::{App, Arg, ArgMatches, ErrorKind as ClapErrorKind};
+use app::new_app;
+use builder::SimulationBuilder;
+use clap::{ArgMatches, ErrorKind as ClapErrorKind};
 use failure::{err_msg, Error, ResultExt};
 use files::{create_file_recursively, fs_timestamp};
 use rayon::ThreadPoolBuilder;
-use runner;
-use runner::SimulationRunner;
 use simplelog::{CombinedLogger, Config, LevelFilter, SharedLogger, TermLogger, WriteLogger};
 use std::collections::HashSet;
 use std::default::Default;
@@ -19,19 +19,24 @@ pub fn run() -> Result<(), Error> {
         Ok(ref matched) => {
             init_thread_pool(matched)?;
 
-            let mut runner = init_simulation_runner(matched)?;
+            let builder = init_simulation_builder(matched)?;
 
             {
-                let spec = runner.spec();
-                init_logging(matched, &spec.log, &fs_timestamp(runner.creation_time()))?;
+                // Init logging after spec reading but before building
+                let spec = builder.spec();
+                init_logging(matched, &spec.log, &fs_timestamp(builder.creation_time()))?;
             }
 
+            info!("Simulation specification ready, preparing simulation...");
+            let mut runner = builder.build()?;
+
             // Log the description line-wise
-            info!("Simulation ready, running…");
+            info!("Simulation ready.");
             for line in format!("{}", runner).lines() {
                 info!("{}", line);
             }
 
+            info!("Simulation running...");
             runner.run();
             info!("Finished simulation, done.");
 
@@ -60,47 +65,6 @@ pub fn run() -> Result<(), Error> {
     }
 }
 
-fn new_app<'a, 'b>() -> App<'a, 'b> {
-    App::new("aitios")
-        .version(crate_version!())
-        .author("krachzack <hello@phstadler.com>")
-        .about("Procedural weathering simulation on the command line with aitios")
-        .arg(
-            Arg::with_name("SIMULATION_SPEC_FILE")
-                .help("Sets the path to the simulation config YAML file")
-                .required(true)
-                .validator(validate_simulation_spec)
-                .index(1)
-        )
-        .arg(
-            Arg::with_name("verbose")
-                .short("v")
-                .long("verbose")
-                .multiple(true)
-                .help("Activates verbose output")
-        )
-        .arg(
-            Arg::with_name("log")
-                .short("l")
-                .long("log")
-                .multiple(true)
-                .takes_value(true)
-                .min_values(0)
-                .max_values(64)
-                .value_name("LOG_FILE")
-                .help("Specifies a file in which to log simulation progress")
-        )
-        .arg(
-            Arg::with_name("threads")
-                .short("t")
-                .long("threads")
-                .takes_value(true)
-                .value_name("THREAD_COUNT")
-                .validator(validate_thread_count)
-                .help("Overrides thread pool size from number of virtual processors to the given thread count")
-        )
-}
-
 fn init_thread_pool(matches: &ArgMatches) -> Result<(), Error> {
     if let Some(thread_count) = matches.value_of("THREAD_COUNT") {
         let thread_count = usize::from_str_radix(&thread_count, 10).unwrap(); // Can be unwrapped since validator checks this
@@ -113,35 +77,69 @@ fn init_thread_pool(matches: &ArgMatches) -> Result<(), Error> {
     Ok(())
 }
 
-fn init_simulation_runner(matches: &ArgMatches) -> Result<SimulationRunner, Error> {
-    let spec_file_path = matches.value_of("SIMULATION_SPEC_FILE").unwrap(); // Can unwrap since is marked as required and parsing would have failed otherwise
+fn init_simulation_builder(matches: &ArgMatches) -> Result<SimulationBuilder, Error> {
+    // Can unwrap since is marked as required and parsing would have failed otherwise
+    let mut spec_file_paths = matches.indices_of("SIMULATION_SPEC_FILE").map(|i| {
+        i.zip(
+            matches
+                .values_of("SIMULATION_SPEC_FILE")
+                .expect("Found simulation spec files but no indices"),
+        ).peekable()
+    });
 
-    let runner = runner::load(spec_file_path).context(format!(
-        "Simulation specification could not be loaded at {}",
-        spec_file_path
-    ))?;
+    let mut inline_specs = matches.indices_of("spec").map(|i| {
+        i.zip(
+            matches
+                .values_of("spec")
+                .expect("Found spec indices but no values"),
+        ).peekable()
+    });
 
-    Ok(runner)
-}
+    let mut builder = SimulationBuilder::new();
 
-fn validate_simulation_spec(simulation_spec_file: String) -> Result<(), String> {
-    if simulation_spec_file.is_empty() {
-        return Err("Specified simulation spec file path is empty".into());
+    loop {
+        let advance_files = {
+            let next_file = spec_file_paths.as_mut().and_then(|f| f.peek());
+            let next_inline = inline_specs.as_mut().and_then(|i| i.peek());
+            match (next_file, next_inline) {
+                (None, None) => break,
+                (Some((file_idx, spec_file)), Some((inline_idx, spec_inline))) => {
+                    // Smaller idx first
+                    if file_idx < inline_idx {
+                        // Advance iterators, so we can terminate some time later
+                        builder = builder.append_spec_fragment_file(spec_file)?;
+                        true
+                    } else {
+                        builder = builder.append_spec_fragment_str(spec_inline)?;
+                        false
+                    }
+                }
+                (Some((_, spec_file)), None) => {
+                    builder = builder.append_spec_fragment_file(spec_file)?;
+                    true
+                }
+                (None, Some((_, spec_inline))) => {
+                    builder = builder.append_spec_fragment_str(spec_inline)?;
+                    false
+                }
+            }
+        };
+        if advance_files {
+            spec_file_paths
+                .as_mut()
+                .unwrap()
+                .next()
+                .expect("Could not advance iterator after peeking");
+        } else {
+            inline_specs
+                .as_mut()
+                .unwrap()
+                .next()
+                .expect("Could not advance iterator after peeking");
+        }
     }
 
-    Ok(())
-}
-
-fn validate_thread_count(thread_count: String) -> Result<(), String> {
-    usize::from_str_radix(&thread_count, 10)
-        .map(|_| ())
-        .map_err(|e| {
-            format!(
-                "Invalid thread count specified: {count}\nCause: {cause}",
-                count = thread_count,
-                cause = e
-            )
-        })
+    Ok(builder)
 }
 
 /// Initializes logging using the given argument matching result

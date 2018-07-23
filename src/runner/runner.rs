@@ -1,7 +1,6 @@
 use asset::obj;
 use bencher::Bencher;
-use chrono::prelude::*;
-use files::{create_file_recursively, fs_timestamp};
+use files::create_file_recursively;
 use geom::Vertex;
 use runner::surfel_table_cache::SurfelTableCache;
 use scene::{Entity, MaterialBuilder};
@@ -23,8 +22,6 @@ type Surface = surf::Surface<surf::Surfel<Vertex, SurfelData>>;
 pub struct SimulationRunner {
     spec: SimulationSpec,
     sim: Simulation,
-    /// The local time at which the runner was created.
-    creation_time: DateTime<Local>,
     iteration: u64,
     unique_substance_names: Vec<String>,
     entities: Vec<Entity>,
@@ -32,6 +29,7 @@ pub struct SimulationRunner {
     iteration_benchmark: Option<Bencher>,
     tracing_benchmark: Option<Bencher>,
     synthesis_benchmark: Option<Bencher>,
+    datetime: String,
 }
 
 impl SimulationRunner {
@@ -40,18 +38,17 @@ impl SimulationRunner {
         unique_substance_names: Vec<String>,
         sim: Simulation,
         entities: Vec<Entity>,
+        // Datetime to replace in file patterns
+        datetime: &str,
     ) -> Self {
-        let creation_time = Local::now();
-
         let surfel_tables = build_surfel_tables(&spec.effects, &entities, sim.surface());
 
         let (iteration_benchmark, tracing_benchmark, synthesis_benchmark) =
-            build_benchmarks(&spec.benchmark, creation_time);
+            build_benchmarks(&spec.benchmark, datetime);
 
         Self {
             spec,
             sim,
-            creation_time,
             iteration: 0,
             unique_substance_names,
             entities,
@@ -59,11 +56,8 @@ impl SimulationRunner {
             iteration_benchmark,
             tracing_benchmark,
             synthesis_benchmark,
+            datetime: String::from(datetime),
         }
-    }
-
-    pub fn creation_time(&self) -> DateTime<Local> {
-        self.creation_time
     }
 
     pub fn spec(&self) -> &SimulationSpec {
@@ -76,11 +70,16 @@ impl SimulationRunner {
         self.iteration = 0;
         self.perform_effects();
 
-        for _ in 0..self.spec.iterations {
+        for _ in 0..self.iterations() {
             // iteration 1 is the first iteration with actual gammaton simulation before effects
             self.iteration += 1;
             self.perform_iteration();
         }
+    }
+
+    fn iterations(&self) -> usize {
+        // Default to 1 iteration
+        self.spec.iterations.unwrap_or(1)
     }
 
     fn perform_iteration(&mut self) {
@@ -88,7 +87,11 @@ impl SimulationRunner {
         // by simulation spec.
         let _iteration_bench = self.iteration_benchmark.as_ref().map(|b| b.bench());
 
-        info!("Iteration {} started...", self.iteration);
+        info!(
+            "Iteration {} of {} started...",
+            self.iteration,
+            self.iterations()
+        );
 
         // Perform tracing and substance transport
         {
@@ -106,9 +109,7 @@ impl SimulationRunner {
     fn perform_effects(&self) {
         // NOTE this will run for iteration 0, so there will be one benchmark more for
         //      synthesis when compared to tracing
-        let _synthesis_bench = self.synthesis_benchmark
-            .as_ref()
-            .map(|b| b.bench());
+        let _synthesis_bench = self.synthesis_benchmark.as_ref().map(|b| b.bench());
 
         // Make a fresh copy of the scene to run the effects on for each effect run.
         // With this technique, effects can accumulate throughout one iteration,
@@ -225,7 +226,7 @@ impl SimulationRunner {
                         .replace("{id}", &format!("{}", ent_idx))
                         .replace("{entity}", &ent.name)
                         .replace("{substance}", substance_name)
-                        .replace("{datetime}", &fs_timestamp(self.creation_time));
+                        .replace("{datetime}", &self.datetime);
 
                     let mut fout = create_file_recursively(&tex_filename)
                         .expect("Could not create image file for density effect.");
@@ -454,7 +455,7 @@ impl SimulationRunner {
             .replace("{id}", &format!("{}", entity_idx))
             .replace("{entity}", &entity.name)
             .replace("{substance}", &self.unique_substance_names[substance_idx])
-            .replace("{datetime}", &fs_timestamp(self.creation_time));
+            .replace("{datetime}", &self.datetime);
 
         let mut tex_file = create_file_recursively(&tex_filename)
             .expect("Could not create texture file for blending effect");
@@ -508,7 +509,7 @@ impl SimulationRunner {
     ) where
         E: IntoIterator<Item = &'a Entity>,
     {
-        let datetime = &fs_timestamp(self.creation_time);
+        let datetime = &self.datetime;
 
         // TODO handle deduplication of material names,
         // e.g. group by name and then make every multiply used name unique if values differ
@@ -539,7 +540,7 @@ impl SimulationRunner {
     }
 
     fn export_surfels(&self, surfel_obj_pattern: &str) {
-        let datetime = &fs_timestamp(self.creation_time);
+        let datetime = &self.datetime;
 
         let surfel_obj_path = surfel_obj_pattern
             .replace("{iteration}", &format!("{}", self.iteration))
@@ -565,19 +566,13 @@ fn is_entity_applicable_for_materials(entity: &Entity, materials: &Vec<String>) 
 
 fn build_benchmarks(
     benchmark: &Option<BenchSpec>,
-    creation_time: DateTime<Local>,
+    creation_time: &str,
 ) -> (Option<Bencher>, Option<Bencher>, Option<Bencher>) {
-    fn build_benchmark(
-        target_file: &Option<PathBuf>,
-        creation_time: DateTime<Local>,
-    ) -> Option<Bencher> {
+    fn build_benchmark(target_file: &Option<PathBuf>, creation_time: &str) -> Option<Bencher> {
         target_file
             .as_ref()
             .and_then(|csv| {
-                let csv = csv
-                    .to_str()
-                    .unwrap()
-                    .replace("{datetime}", &fs_timestamp(creation_time));
+                let csv = csv.to_str().unwrap().replace("{datetime}", creation_time);
 
                 Some(create_file_recursively(csv).expect("Failed to create benchmark file"))
             })
@@ -757,12 +752,14 @@ impl fmt::Display for SimulationRunner {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "Name:               {}\n", self.spec.name)?;
         write!(f, "Description:        {}\n", self.spec.description)?;
-        write!(
-            f,
-            "Scene:              {}\n",
-            self.spec.scene.file_name().unwrap().to_str().unwrap()
-        )?;
-        write!(f, "Iterations:         {}\n", self.spec.iterations)?;
+        for scene in self.spec.scenes.iter() {
+            write!(
+                f,
+                "Scene:              {}\n",
+                scene.file_name().unwrap().to_str().unwrap()
+            )?;
+        }
+        write!(f, "Iterations:         {}\n", self.iterations())?;
         write!(f, "Surfels:            {}\n", self.sim.surfel_count())?;
         write!(f, "Tons per iteration: {}\n", self.sim.emission_count())?;
         write!(f, "Substances:         {:?}", self.unique_substance_names)

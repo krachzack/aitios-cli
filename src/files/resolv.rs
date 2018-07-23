@@ -31,6 +31,7 @@ pub enum ResolveError {
 
 /// Resolves existing relative and absolute filenames for using a list
 /// of base paths that the filenames for lookup can be relative to.
+#[derive(Clone)]
 pub struct Resolver {
     bases: Vec<PathBuf>,
 }
