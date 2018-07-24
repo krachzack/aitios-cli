@@ -597,6 +597,12 @@ fn build_surfel_tables(
 ) -> SurfelTableCache {
     let mut surfel_tables = SurfelTableCache::new();
 
+    info!(
+        "Surfel table pre-calculation started for {fx_len} effects on {ent_len} entities...",
+        fx_len = effects.len(),
+        ent_len = entities.len(),
+    );
+
     for effect in effects {
         match effect {
             &EffectSpec::Layer {
@@ -724,6 +730,8 @@ fn build_surfel_tables(
             _ => (),
         }
     }
+
+    info!("Surfel table pre-calculation complete.");
 
     surfel_tables
 }
