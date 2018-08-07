@@ -1,39 +1,14 @@
-extern crate aitios_asset as asset;
-extern crate aitios_geom as geom;
-extern crate aitios_scene as scene;
-extern crate aitios_sim as sim;
-extern crate aitios_surf as surf;
-extern crate aitios_tex as tex;
-#[macro_use]
-extern crate clap;
-#[macro_use]
+extern crate aitios_cli;
 extern crate failure;
-#[macro_use]
-extern crate failure_derive;
-extern crate chrono;
-#[macro_use]
-extern crate serde_derive;
-extern crate rayon;
-extern crate serde;
-extern crate serde_yaml;
-#[macro_use]
-extern crate log;
-extern crate simplelog;
+#[macro_use] extern crate log;
 
-mod app;
-mod bencher;
-mod builder;
-mod files;
-mod run;
-mod runner;
-mod spec;
-
+use aitios_cli::app;
 use failure::{Error, Fail};
 use log::Level::Debug;
 use std::process;
 
 fn main() {
-    if let Err(err) = run::run() {
+    if let Err(err) = app::run() {
         exit_with_error(err);
     }
 }

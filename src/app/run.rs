@@ -1,6 +1,6 @@
 use app::new_app;
 use builder::SimulationBuilder;
-use clap::{ArgMatches, ErrorKind as ClapErrorKind};
+use clap::{ArgMatches, ErrorKind as ClapErrorKind, Result as ClapResult};
 use failure::{err_msg, Error, ResultExt};
 use files::{create_file_recursively, fs_timestamp};
 use rayon::ThreadPoolBuilder;
@@ -10,10 +10,24 @@ use std::default::Default;
 use std::env::current_dir;
 use std::fs::create_dir_all;
 use std::path::{Path, PathBuf};
+use std::ffi::OsString;
 
+/// Runs with the specified arguments rather than `std::env::args()`.
+/// The first argument will be the executable name, the second will
+/// be the first genuine argument.
+pub fn run_with_args<I, A>(iter: I) -> Result<(), Error>
+where I: IntoIterator<Item=A>, A : Into<OsString> + Clone {
+    let matches = new_app().get_matches_from_safe(iter);
+    run_with_matches(matches)
+}
+
+/// Runs the applications with the arguments obtained from `std::env::args()`. 
 pub fn run() -> Result<(), Error> {
     let matches = new_app().get_matches_safe();
+    run_with_matches(matches)
+}
 
+fn run_with_matches(matches: ClapResult<ArgMatches>) -> Result<(), Error> {
     match matches {
         // CLI arg parsing succeeded, unwrap the result and start loading and running simulation.
         Ok(ref matched) => {
