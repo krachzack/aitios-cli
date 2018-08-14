@@ -55,7 +55,7 @@ impl Resolver {
     /// Note that in contrast to all root directories, the current working
     /// directory is not automatically added. It can be added as ".":
     ///
-    /// ```
+    /// ```ignore
     /// # use files::Resolver;
     /// let mut resolver = Resolver::new();
     /// resolver.add_base(".");
@@ -115,7 +115,7 @@ impl Resolver {
     /// Finding `/dev/rand` and `/dev/null` can be done by adding a base
     /// path `/dev/`.
     ///
-    /// ```
+    /// ```ignore
     /// use files::Resolver;
     ///
     /// let resolver = Resolver::new();

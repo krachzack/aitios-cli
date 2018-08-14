@@ -1,6 +1,7 @@
 extern crate aitios_cli;
 extern crate failure;
-#[macro_use] extern crate log;
+#[macro_use]
+extern crate log;
 
 use aitios_cli::app;
 use failure::{Error, Fail};
@@ -15,20 +16,22 @@ fn main() {
 
 /// Prints error messages and exits with a non-zero exit code.
 fn exit_with_error(error: Error) -> ! {
+    fail_for_humans(&error);
+
+    // Print additional info if verbose enabled
     if log_enabled!(Debug) {
-        fail_for_debugging(error.cause());
-    } else {
-        fail_for_humans(error);
+        fail_for_debugging(error.as_fail());
     }
+
     process::exit(1)
 }
 
-fn fail_for_humans(error: Error) {
+fn fail_for_humans(error: &Error) {
     eprintln!("{}", summarize_error(error));
 }
 
-fn summarize_error(error: Error) -> String {
-    let mut causes = error.causes();
+fn summarize_error(error: &Error) -> String {
+    let mut causes = error.iter_chain();
 
     // Error struct guarantees at least one top-level cause.
     let top_level_cause = causes.next().unwrap();
@@ -53,7 +56,6 @@ fn summarize_error(error: Error) -> String {
 }
 
 fn fail_for_debugging(mut error: &Fail) {
-    debug!("Printing debug information about the error before exiting.");
     debug!("fatal: {:?}", error);
     while let Some(cause) = error.cause() {
         debug!("> cause: {:?}", cause);

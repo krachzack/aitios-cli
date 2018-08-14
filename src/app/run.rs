@@ -8,20 +8,23 @@ use simplelog::{CombinedLogger, Config, LevelFilter, SharedLogger, TermLogger, W
 use std::collections::HashSet;
 use std::default::Default;
 use std::env::current_dir;
+use std::ffi::OsString;
 use std::fs::create_dir_all;
 use std::path::{Path, PathBuf};
-use std::ffi::OsString;
 
 /// Runs with the specified arguments rather than `std::env::args()`.
 /// The first argument will be the executable name, the second will
 /// be the first genuine argument.
 pub fn run_with_args<I, A>(iter: I) -> Result<(), Error>
-where I: IntoIterator<Item=A>, A : Into<OsString> + Clone {
+where
+    I: IntoIterator<Item = A>,
+    A: Into<OsString> + Clone,
+{
     let matches = new_app().get_matches_from_safe(iter);
     run_with_matches(matches)
 }
 
-/// Runs the applications with the arguments obtained from `std::env::args()`. 
+/// Runs the applications with the arguments obtained from `std::env::args()`.
 pub fn run() -> Result<(), Error> {
     let matches = new_app().get_matches_safe();
     run_with_matches(matches)

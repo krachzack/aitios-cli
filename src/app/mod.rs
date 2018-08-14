@@ -6,7 +6,4 @@ mod app;
 mod run;
 
 pub use self::app::new_app;
-pub use self::run::{
-    run,
-    run_with_args
-};
+pub use self::run::{run, run_with_args};

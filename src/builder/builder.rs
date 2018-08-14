@@ -1,4 +1,4 @@
-use builder::{append, instantiate, Error, ResolveErrorKind};
+use builder::{append, canonicalize, instantiate, Error, ResolveErrorKind};
 use chrono::*;
 use files::Resolver;
 use runner::SimulationRunner;
@@ -88,9 +88,11 @@ impl SimulationBuilder {
     {
         let simulation_spec_file = simulation_spec_file.as_ref();
 
+        // Resolve relative to cwd and relative to this spec.
+        let resolv = self.resolver_for(&simulation_spec_file)?;
+
         // Allow relative files relative to parent of spec.
-        let spec_path = self
-            .resolver_for(&simulation_spec_file)?
+        let spec_path = resolv
             .resolve(simulation_spec_file)
             .map_err(|e| Error::resolve(e, ResolveErrorKind::Simulation))?;
 
@@ -100,11 +102,19 @@ impl SimulationBuilder {
             File::open(&spec_path)?,
         )?;
 
+        // Resolve relative paths in the spec to absolute ones with a temporary
+        // resolver that takes the local neighbourhood of the spec fragment
+        // into account.
+        // Not modifying self.resolv avoids hard to track down bugs when files
+        // are resolved relative to some earlier spec.
+        let spec = canonicalize(spec, &resolv)?;
+
         self.append_spec_fragment(&spec)
     }
 
     pub fn append_spec_fragment_str(self, spec: &str) -> Result<Self, Error> {
         let spec = serde_yaml::from_str(spec)?;
+        let spec = canonicalize(spec, &self.resolv)?;
         self.append_spec_fragment(&spec)
     }
 

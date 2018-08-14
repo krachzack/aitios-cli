@@ -54,6 +54,7 @@ pub enum ResolveErrorKind {
     SurfelSpec,
     Scene,
     Layer,
+    Benchmark,
 }
 
 impl fmt::Display for ResolveErrorKind {
@@ -69,6 +70,7 @@ impl fmt::Display for ResolveErrorKind {
                 &ResolveErrorKind::SurfelSpec => "Surfel specification",
                 &ResolveErrorKind::Scene => "Scene to simulate",
                 &ResolveErrorKind::Layer => "Texture sample referenced by layer effect",
+                &ResolveErrorKind::Benchmark => "Benchmarking CSV",
             }
         )
     }

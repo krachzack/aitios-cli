@@ -63,7 +63,7 @@ mod test {
                 .iter()
                 .all(|scene| scene.file_name().unwrap().to_str().unwrap() == "buddha.obj"),
         );
-        assert_eq!(spec.iterations, 30);
+        assert_eq!(spec.iterations, Some(30));
         assert_eq!(spec.surfels_by_material.get("bronze").unwrap(), "iron.yml");
         assert_eq!(spec.surfels_by_material.get("_").unwrap(), "concrete.yml");
         assert_eq!(

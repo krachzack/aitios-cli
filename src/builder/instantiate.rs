@@ -8,9 +8,7 @@ use scene::DeinterleavedIndexedMeshBuf;
 use scene::{Entity, Mesh};
 use serde_yaml;
 use sim::{Simulation, SurfelData, SurfelRule, TonSource, TonSourceBuilder};
-use spec::{
-    BenchSpec, EffectSpec, SimulationSpec, Stop, SurfelRuleSpec, SurfelSpec, TonSourceSpec,
-};
+use spec::{BenchSpec, SimulationSpec, SurfelRuleSpec, SurfelSpec, TonSourceSpec};
 use std::cmp::Eq;
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
@@ -25,8 +23,11 @@ use surf::{Surface, SurfaceBuilder, Surfel, SurfelSampling};
 ///
 /// The runner contains the spec. The spec will be mutated in some places,
 /// e.g. contained paths will be canonicalized.
+///
+/// TODO this resolving business needs to be removed, since canonicalize
+///      is now responsible for this.
 pub fn instantiate(
-    mut spec: SimulationSpec,
+    spec: SimulationSpec,
     resolver: &Resolver,
     creation_time: DateTime<Local>,
 ) -> Result<SimulationRunner, Error> {
@@ -34,19 +35,7 @@ pub fn instantiate(
 
     let surfel_specs_by_material_name = surfel_specs_by_material_name(&spec, &resolver)?;
 
-    let entities = {
-        let scene_paths: Result<Vec<PathBuf>, Error> = spec
-            .scenes
-            .iter()
-            .map(|s| {
-                resolver
-                    .resolve(s)
-                    .map_err(|e| Error::resolve(e, ResolveErrorKind::Scene))
-            })
-            .collect();
-
-        load_entities(scene_paths?, &surfel_specs_by_material_name)?
-    };
+    let entities = load_entities(&spec.scenes, &surfel_specs_by_material_name)?;
 
     let source_specs = load_source_specs(&spec.sources, &resolver)?;
 
@@ -60,8 +49,6 @@ pub fn instantiate(
     if spec.effects.is_empty() {
         return Err(Error::EffectsMissing);
     }
-
-    resolve_effect_spec_paths(&mut spec.effects, &resolver)?;
 
     //let surfel_rules = build_surfel_rules(&surfel_specs_by_material_name, &unique_substance_names);
     let sources = build_sources(&source_specs, &unique_substance_names, &resolver)?;
@@ -123,12 +110,12 @@ pub fn instantiate(
 }
 
 fn load_entities(
-    paths: Vec<PathBuf>,
+    paths: &Vec<PathBuf>,
     surfel_specs_by_material_name: &HashMap<String, SurfelSpec>,
 ) -> Result<Vec<Entity>, Error> {
     let mut all_entities = Vec::new();
 
-    for scene_path in paths.into_iter() {
+    for scene_path in paths.iter() {
         let mut entities = obj::load(&scene_path)?;
 
         // Throw out all entitites which have no mapped surfel spec,
@@ -167,57 +154,6 @@ fn unique_substance_names(
         .collect();
 
     unique_substance_names.into_iter().cloned().collect()
-}
-
-fn resolve_effect_spec_paths(
-    specs: &mut Vec<EffectSpec>,
-    resolver: &Resolver,
-) -> Result<(), Error> {
-    for effect in specs.iter_mut() {
-        match effect {
-            EffectSpec::Layer {
-                ref mut normal,
-                ref mut displacement,
-                ref mut albedo,
-                ref mut metallicity,
-                ref mut roughness,
-                ..
-            } => {
-                if let Some(normal) = normal {
-                    resolve_stop_list_paths(&mut normal.stops, resolver)?;
-                }
-                if let Some(displacement) = displacement {
-                    resolve_stop_list_paths(&mut displacement.stops, resolver)?;
-                }
-                if let Some(albedo) = albedo {
-                    resolve_stop_list_paths(&mut albedo.stops, resolver)?;
-                }
-                if let Some(metallicity) = metallicity {
-                    resolve_stop_list_paths(&mut metallicity.stops, resolver)?;
-                }
-                if let Some(roughness) = roughness {
-                    resolve_stop_list_paths(&mut roughness.stops, resolver)?;
-                }
-            }
-            _ => (),
-        }
-    }
-    Ok(())
-}
-
-fn resolve_stop_list_paths(stops: &mut Vec<Stop>, resolver: &Resolver) -> Result<(), Error> {
-    for stop in stops.iter_mut() {
-        stop.sample = if let Some(sample) = stop.sample.as_ref() {
-            Some(
-                resolver
-                    .resolve(sample)
-                    .map_err(|e| Error::resolve(e, ResolveErrorKind::Layer))?,
-            )
-        } else {
-            None
-        }
-    }
-    Ok(())
 }
 
 fn load_source_specs(
