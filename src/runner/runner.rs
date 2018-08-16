@@ -22,7 +22,7 @@ type Surface = surf::Surface<surf::Surfel<Vertex, SurfelData>>;
 pub struct SimulationRunner {
     spec: SimulationSpec,
     sim: Simulation,
-    iteration: u64,
+    iteration: u32,
     unique_substance_names: Vec<String>,
     entities: Vec<Entity>,
     surfel_tables: SurfelTableCache,
@@ -66,18 +66,18 @@ impl SimulationRunner {
 
     pub fn run(&mut self) {
         // Iteration 0 only performs effects, no tracing is performed.
-        // Useful as a reference for iteration 1
+        // Useful as a reference for iteration 1.
         self.iteration = 0;
         self.perform_effects();
 
         for _ in 0..self.iterations() {
-            // iteration 1 is the first iteration with actual gammaton simulation before effects
+            // Iteration 1 is the first iteration with actual gammaton simulation before effects.
             self.iteration += 1;
             self.perform_iteration();
         }
     }
 
-    fn iterations(&self) -> usize {
+    fn iterations(&self) -> u32 {
         // Default to 1 iteration
         self.spec.iterations.unwrap_or(1)
     }
@@ -93,7 +93,7 @@ impl SimulationRunner {
             self.iterations()
         );
 
-        // Perform tracing and substance transport
+        // Perform tracing and substance transport every iteration.
         {
             let _tracing_and_transport_bench = self.tracing_benchmark.as_ref().map(|b| b.bench());
 
@@ -101,9 +101,22 @@ impl SimulationRunner {
             self.sim.run();
         }
 
-        // NOTE surfel table cache invalidation necessary if geometry was changed
-        info!("Texture synthesis...");
-        self.perform_effects();
+        let effects_scheduled = match self.spec.effect_interval {
+            // Run effects every iteration if nothing specified.
+            None => true,
+            // If interval is defined, 1-based iteration index must be divisible.
+            Some(interval) if (self.iteration % interval) == 0 => true,
+            // The last iteration gets effects in any case.
+            Some(_) if self.iteration == self.iterations() => true,
+            // Interval defined and not divisible, skip effects.
+            _ => false,
+        };
+
+        if effects_scheduled {
+            // NOTE surfel table cache invalidation necessary if geometry was changed
+            info!("Texture synthesis...");
+            self.perform_effects();
+        }
     }
 
     fn perform_effects(&self) {

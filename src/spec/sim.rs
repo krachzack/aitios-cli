@@ -12,7 +12,12 @@ pub struct SimulationSpec {
     #[serde(default)]
     pub scenes: Vec<PathBuf>,
     #[serde(default)]
-    pub iterations: Option<usize>,
+    pub iterations: Option<u32>,
+    /// Determines how often the effect pipeline is run.
+    /// Iteration 0 and the last iteration will always be run,
+    /// regardless of this setting.
+    #[serde(default)]
+    pub effect_interval: Option<u32>,
     pub log: Option<PathBuf>,
     pub surfel_distance: Option<f32>,
     #[serde(default)]
@@ -32,6 +37,7 @@ impl Default for SimulationSpec {
             description: String::new(),
             scenes: Vec::new(),
             iterations: None,
+            effect_interval: None,
             log: None,
             surfel_distance: None,
             sources: Vec::new(),

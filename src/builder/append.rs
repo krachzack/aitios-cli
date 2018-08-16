@@ -18,6 +18,7 @@ pub fn append(first: SimulationSpec, second: &SimulationSpec) -> SimulationSpec 
         description: append_textual(&first.description, &second.description, "\n\n"),
         scenes: append_list(first.scenes, second.scenes.iter()),
         iterations: second.iterations.or(first.iterations),
+        effect_interval: second.effect_interval.or(first.effect_interval),
         log: append_log(first.log, &second.log),
         surfel_distance: append_surfel_distance(first.surfel_distance, second.surfel_distance),
         sources: append_list(first.sources, &second.sources),
