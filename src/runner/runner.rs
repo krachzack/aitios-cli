@@ -83,7 +83,7 @@ impl SimulationRunner {
     }
 
     fn perform_iteration(&mut self) {
-        // Write timings of iterations to CSV benchmarks if required
+        // Write timings of complete iterations to CSV benchmarks if required
         // by simulation spec.
         let _iteration_bench = self.iteration_benchmark.as_ref().map(|b| b.bench());
 
@@ -102,14 +102,11 @@ impl SimulationRunner {
         }
 
         let effects_scheduled = match self.spec.effect_interval {
-            // Run effects every iteration if nothing specified.
-            None => true,
-            // If interval is defined, 1-based iteration index must be divisible.
+            // Interval is defined, 1-based iteration index must be divisible.
             Some(interval) if (self.iteration % interval) == 0 => true,
-            // The last iteration gets effects in any case.
-            Some(_) if self.iteration == self.iterations() => true,
-            // Interval defined and not divisible, skip effects.
-            _ => false,
+            // Either no interval defined or defined and not divisible, skip effects,
+            // except for the last iteration.
+            _ => self.iteration == self.iterations(),
         };
 
         if effects_scheduled {
@@ -126,7 +123,7 @@ impl SimulationRunner {
 
         // Make a fresh copy of the scene to run the effects on for each effect run.
         // With this technique, effects can accumulate throughout one iteration,
-        // but each iteration will start with a fresh copy of the scene.
+        // but each iteration will apply its effects on top of the base material.
         let mut entities = self.entities.clone();
 
         for effect in &self.spec.effects {
