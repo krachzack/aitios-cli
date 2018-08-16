@@ -98,8 +98,8 @@ mod test {
             let bencher = Bencher::new(csv);
 
             {
-                let _benchmark_10 = bencher.bench();
-                sleep(Duration::from_millis(10));
+                let _benchmark_100 = bencher.bench();
+                sleep(Duration::from_millis(100));
             }
 
             {
@@ -107,7 +107,7 @@ mod test {
             }
 
             {
-                let _benchmark_15 = bencher.bench();
+                let _benchmark_1050 = bencher.bench();
                 sleep(Duration::from_millis(1015));
             }
         }
@@ -115,6 +115,7 @@ mod test {
         let mut benchmark_output = String::new();
         let mut benchmark_file =
             File::open(csv_path).expect("Did not find a file created by the benchmarker.");
+
         benchmark_file
             .read_to_string(&mut benchmark_output)
             .expect("Could not read file created by benchmarker to string");
@@ -135,19 +136,26 @@ mod test {
             // Make tuple of (seconds, subsecond-milliseconds) out of each line
             .map(|l| (l[0], l[1] / 1000000));
 
-        assert_eq!(
-            Some((0, 10)),
-            benchmarks_ms.next(),
+        fn almost_equal(
+            (secs, subsecs): (u64, u64),
+            (expected_secs, expected_subsecs): (u64, u64),
+        ) -> bool {
+            let tolerance_ms = 50;
+            secs == expected_secs
+                && subsecs >= expected_subsecs.saturating_sub(tolerance_ms)
+                && subsecs <= expected_subsecs + tolerance_ms
+        }
+
+        assert!(
+            almost_equal(benchmarks_ms.next().unwrap(), (0, 100)),
             "Expected first benchmark to measure 10ms."
         );
-        assert_eq!(
-            Some((0, 0)),
-            benchmarks_ms.next(),
+        assert!(
+            almost_equal(benchmarks_ms.next().unwrap(), (0, 0)),
             "Expected second benchmark to measure 0ms."
         );
-        assert_eq!(
-            Some((1, 15)),
-            benchmarks_ms.next(),
+        assert!(
+            almost_equal(benchmarks_ms.next().unwrap(), (1, 15)),
             "Expected third benchmark to measure 1015ms."
         );
 
