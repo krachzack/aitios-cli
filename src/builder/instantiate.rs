@@ -7,7 +7,7 @@ use runner::SimulationRunner;
 use scene::DeinterleavedIndexedMeshBuf;
 use scene::{Entity, Mesh};
 use serde_yaml;
-use sim::{Simulation, SurfelData, SurfelRule, TonSource, TonSourceBuilder};
+use sim::{Config, Simulation, SurfelData, SurfelRule, TonSource, TonSourceBuilder, Transport};
 use spec::{BenchSpec, SimulationSpec, SurfelRuleSpec, SurfelSpec, TonSourceSpec};
 use std::cmp::Eq;
 use std::collections::{HashMap, HashSet};
@@ -77,8 +77,15 @@ pub fn instantiate(
             })
             .flat_map(|e| e.mesh.triangles());
 
+        let transport = match spec.consistent_transport {
+            Some(true) => Transport::consistent(),
+            _ => Transport::classic(),
+        };
+
+        let config = Config { transport };
+
         // No global surfel rules, only per substance type mapped from material
-        Simulation::new(sources, all_triangles, surface, vec![])
+        Simulation::new_with_config(config, sources, all_triangles, surface, vec![])
     };
 
     let datetime = fs_timestamp(creation_time);

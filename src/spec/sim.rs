@@ -11,12 +11,10 @@ pub struct SimulationSpec {
     pub description: String,
     #[serde(default)]
     pub scenes: Vec<PathBuf>,
-    #[serde(default)]
     pub iterations: Option<u32>,
     /// Determines how often the effect pipeline is run.
     /// Iteration 0 and the last iteration will always be run,
     /// regardless of this setting.
-    #[serde(default)]
     pub effect_interval: Option<u32>,
     pub log: Option<PathBuf>,
     pub surfel_distance: Option<f32>,
@@ -26,8 +24,8 @@ pub struct SimulationSpec {
     pub surfels_by_material: HashMap<String, String>,
     #[serde(default)]
     pub effects: Vec<EffectSpec>,
-    #[serde(default)]
     pub benchmark: Option<BenchSpec>,
+    pub consistent_transport: Option<bool>,
 }
 
 impl Default for SimulationSpec {
@@ -44,6 +42,7 @@ impl Default for SimulationSpec {
             surfels_by_material: HashMap::new(),
             effects: Vec::new(),
             benchmark: None,
+            consistent_transport: None,
         }
     }
 }
