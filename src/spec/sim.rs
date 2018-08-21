@@ -26,6 +26,7 @@ pub struct SimulationSpec {
     pub effects: Vec<EffectSpec>,
     pub benchmark: Option<BenchSpec>,
     pub consistent_transport: Option<bool>,
+    pub flat_filtering: Option<bool>,
 }
 
 impl Default for SimulationSpec {
@@ -43,6 +44,7 @@ impl Default for SimulationSpec {
             effects: Vec::new(),
             benchmark: None,
             consistent_transport: None,
+            flat_filtering: None,
         }
     }
 }

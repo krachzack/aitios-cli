@@ -11,10 +11,10 @@ use std::fmt;
 use std::path::PathBuf;
 use std::rc::Rc;
 use surf;
-use tex::{self, GenericImage};
 use tex::{
+    self, GenericImage,
     combine_normals, open, BlendType, Density, DynamicImage, FilterType, GuidedBlend, Pixel, Rgba,
-    Stop,
+    Stop, SubstanceFilter
 };
 
 type Surface = surf::Surface<surf::Surfel<Vertex, SurfelData>>;
@@ -182,6 +182,13 @@ impl SimulationRunner {
         }
     }
 
+    fn filtering(&self) -> SubstanceFilter {
+        match self.spec.flat_filtering {
+            Some(true) => SubstanceFilter::Flat,
+            _ => SubstanceFilter::Smooth
+        }
+    }
+
     /// For each substance, create a density map for each entity, then serialize a scene with
     /// textures applied. Does not influence other effects and leaves the original scene unchanged.
     /// Useful for debugging.
@@ -212,6 +219,7 @@ impl SimulationRunner {
                 Rgba {
                     data: [0, 0, 0, 255],
                 }, // max color
+                self.filtering(),
             );
 
             // Make lazy copy of original scene with each material replaced
@@ -410,6 +418,7 @@ impl SimulationRunner {
             Rgba {
                 data: [255, 255, 255, 255],
             }, // max color
+            self.filtering(),
         ).collect_with_table(self.sim.surface(), table);
 
         let guided_blend = Self::make_guided_blend(blend, blend_type, original_map);
