@@ -31,6 +31,10 @@ pub enum SurfelRuleSpec {
         from: String,
         factor: f32,
     },
+    Deposit {
+        to: String,
+        amount: f32,
+    },
 }
 
 #[cfg(test)]

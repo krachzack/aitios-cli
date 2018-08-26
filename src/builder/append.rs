@@ -30,8 +30,9 @@ pub fn append(first: SimulationSpec, second: &SimulationSpec) -> SimulationSpec 
         },
         effects: append_list(first.effects, second.effects.iter()),
         benchmark: append_benchmark(&first.benchmark, &second.benchmark),
-        consistent_transport: second.consistent_transport.or(first.consistent_transport),
+        transport: second.transport.or(first.transport),
         flat_filtering: second.flat_filtering.or(first.flat_filtering),
+        rules: append_list(first.rules, second.rules.iter()),
     }
 }
 

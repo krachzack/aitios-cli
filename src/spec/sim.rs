@@ -1,4 +1,4 @@
-use spec::{BenchSpec, EffectSpec};
+use spec::{BenchSpec, EffectSpec, SurfelRuleSpec, Transport};
 use std::collections::HashMap;
 use std::default::Default;
 use std::path::PathBuf;
@@ -25,8 +25,10 @@ pub struct SimulationSpec {
     #[serde(default)]
     pub effects: Vec<EffectSpec>,
     pub benchmark: Option<BenchSpec>,
-    pub consistent_transport: Option<bool>,
+    pub transport: Option<Transport>,
     pub flat_filtering: Option<bool>,
+    #[serde(default)]
+    pub rules: Vec<SurfelRuleSpec>,
 }
 
 impl Default for SimulationSpec {
@@ -43,8 +45,9 @@ impl Default for SimulationSpec {
             surfels_by_material: HashMap::new(),
             effects: Vec::new(),
             benchmark: None,
-            consistent_transport: None,
+            transport: None,
             flat_filtering: None,
+            rules: Vec::new(),
         }
     }
 }

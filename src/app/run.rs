@@ -200,23 +200,23 @@ where
     I: IntoIterator<Item = S>,
     S: AsRef<str>,
 {
+    // Nothing => warn, -v => Info, -vv => Debug
+    let filter = match arg_matches.occurrences_of("verbose") {
+        0 => LevelFilter::Warn,
+        1 => LevelFilter::Info,
+        _ => LevelFilter::Debug,
+    };
+
     let mut loggers: Vec<Box<SharedLogger>> = vec![
-        TermLogger::new(
-            // Nothing => warn, -v => Info, -vv => Debug
-            match arg_matches.occurrences_of("verbose") {
-                0 => LevelFilter::Warn,
-                1 => LevelFilter::Info,
-                _ => LevelFilter::Debug,
-            },
-            Config::default(),
-        ).ok_or(err_msg("Failed to set up logging to terminal."))?,
+        TermLogger::new(filter, Config::default())
+            .ok_or(err_msg("Failed to set up logging to terminal."))?,
     ];
 
     let log_paths = canonical_log_file_paths(arg_matches, additional_logs, datetime)?;
     for log in log_paths.into_iter() {
         let log = create_file_recursively(log).context("Failed to create log file.")?;
 
-        loggers.push(WriteLogger::new(LevelFilter::Debug, Config::default(), log));
+        loggers.push(WriteLogger::new(filter, Config::default(), log));
     }
 
     CombinedLogger::init(loggers).context("Failed to set up combined logger.")?;

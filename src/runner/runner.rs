@@ -12,9 +12,8 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use surf;
 use tex::{
-    self, GenericImage,
-    combine_normals, open, BlendType, Density, DynamicImage, FilterType, GuidedBlend, Pixel, Rgba,
-    Stop, SubstanceFilter
+    self, combine_normals, open, BlendType, Density, DynamicImage, FilterType, GenericImage,
+    GuidedBlend, Pixel, Rgba, Stop, SubstanceFilter,
 };
 
 type Surface = surf::Surface<surf::Surfel<Vertex, SurfelData>>;
@@ -185,7 +184,7 @@ impl SimulationRunner {
     fn filtering(&self) -> SubstanceFilter {
         match self.spec.flat_filtering {
             Some(true) => SubstanceFilter::Flat,
-            _ => SubstanceFilter::Smooth
+            _ => SubstanceFilter::Smooth,
         }
     }
 

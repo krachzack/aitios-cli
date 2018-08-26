@@ -8,7 +8,7 @@ use scene::DeinterleavedIndexedMeshBuf;
 use scene::{Entity, Mesh};
 use serde_yaml;
 use sim::{Config, Simulation, SurfelData, SurfelRule, TonSource, TonSourceBuilder, Transport};
-use spec::{BenchSpec, SimulationSpec, SurfelRuleSpec, SurfelSpec, TonSourceSpec};
+use spec::{BenchSpec, SimulationSpec, SurfelRuleSpec, SurfelSpec, TonSourceSpec, Transport::*};
 use std::cmp::Eq;
 use std::collections::{HashMap, HashSet};
 use std::fs::File;
@@ -77,15 +77,23 @@ pub fn instantiate(
             })
             .flat_map(|e| e.mesh.triangles());
 
-        let transport = match spec.consistent_transport {
-            Some(true) => Transport::consistent(),
-            _ => Transport::classic(),
+        let transport = match spec.transport {
+            Some(Classic) => Transport::classic(),
+            Some(Consistent) => Transport::consistent(),
+            Some(Conserving) => Transport::conserving(),
+            Some(Differential) | None => Transport::differential(),
         };
 
         let config = Config { transport };
 
+        let rules = spec
+            .rules
+            .iter()
+            .map(|r| rule_by_spec(r, &unique_substance_names))
+            .collect();
+
         // No global surfel rules, only per substance type mapped from material
-        Simulation::new_with_config(config, sources, all_triangles, surface, vec![])
+        Simulation::new_with_config(config, sources, all_triangles, surface, rules)
     };
 
     let datetime = fs_timestamp(creation_time);
@@ -167,9 +175,9 @@ fn load_source_specs(
     sources: &Vec<PathBuf>,
     resolver: &Resolver,
 ) -> Result<Vec<TonSourceSpec>, Error> {
-    if sources.is_empty() {
+    /*if sources.is_empty() {
         return Err(Error::SourcesMissing);
-    }
+    }*/
 
     sources
         .iter()
@@ -304,24 +312,7 @@ fn build_surface(
                     let rules = surfel_spec
                         .rules
                         .iter()
-                        .map(|s| {
-                            match s {
-                            &SurfelRuleSpec::Transfer { ref from, ref to, factor } =>
-                                SurfelRule::Transfer {
-                                    source_substance_idx: unique_substance_names.iter().position(|n| n == from)
-                                        .expect(&format!("Surfel transport rule references unknown substance name {}", from)),
-                                    target_substance_idx: unique_substance_names.iter().position(|n| n == to)
-                                        .expect(&format!("Surfel transport rule references unknown substance name {}", to)),
-                                    factor
-                                },
-                            &SurfelRuleSpec::Deteriorate { ref from, factor } =>
-                                SurfelRule::Deteriorate {
-                                    substance_idx: unique_substance_names.iter().position(|n| n == from)
-                                        .expect(&format!("Surfel transport rule references unknown substance name {}", from)),
-                                    factor
-                                }
-                        }
-                        })
+                        .map(|r| rule_by_spec(r, &unique_substance_names))
                         .collect();
 
                     let proto_surfel = SurfelData {
@@ -356,6 +347,51 @@ fn build_surface(
             },
         )
         .build()
+}
+
+fn rule_by_spec(spec: &SurfelRuleSpec, unique_substance_names: &[String]) -> SurfelRule {
+    match spec {
+        &SurfelRuleSpec::Transfer {
+            ref from,
+            ref to,
+            factor,
+        } => SurfelRule::Transfer {
+            source_substance_idx: unique_substance_names
+                .iter()
+                .position(|n| n == from)
+                .expect(&format!(
+                    "Surfel transport rule references unknown substance name {}",
+                    from
+                )),
+            target_substance_idx: unique_substance_names.iter().position(|n| n == to).expect(
+                &format!(
+                    "Surfel transport rule references unknown substance name {}",
+                    to
+                ),
+            ),
+            factor,
+        },
+        &SurfelRuleSpec::Deteriorate { ref from, factor } => SurfelRule::Deteriorate {
+            substance_idx: unique_substance_names
+                .iter()
+                .position(|n| n == from)
+                .expect(&format!(
+                    "Surfel transport rule references unknown substance name {}",
+                    from
+                )),
+            factor,
+        },
+        &SurfelRuleSpec::Deposit { ref to, amount } => SurfelRule::Deposit {
+            substance_idx: unique_substance_names
+                .iter()
+                .position(|n| n == to)
+                .expect(&format!(
+                    "Surfel transport rule references unknown substance name {}",
+                    to
+                )),
+            amount,
+        },
+    }
 }
 
 /// Extracts the values of the given vector of keys from the given map.
